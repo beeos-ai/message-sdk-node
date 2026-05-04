@@ -18,11 +18,25 @@ export interface MessageSDKConfig {
    * Optional Message Service REST base URL (e.g. `https://msg.beeos.ai`).
    * Required for the `getToken`, `sendChannelMessage`, `waitForReply`,
    * `listChannelMessages`, `send`, `isOnline`, `registerWebhook` methods.
-   * Agents under the P6 architecture should leave this UNDEFINED — they
-   * obtain Centrifugo tokens via Agent Gateway proxy, not via direct
-   * Message Service REST.
+   *
+   * Two valid auth modes:
+   *
+   *   - Service-to-service: set `apiKey` (X-API-Key) — used by Gateway,
+   *     A2A Service, Agent Gateway internal callers.
+   *   - Principal-level (agent pods): leave `apiKey` UNSET. After
+   *     `connect()` succeeds, the SDK forwards the Centrifugo token
+   *     (received from `tokenProvider`) as `Authorization: Bearer <jwt>`
+   *     on every REST call. MS verifies the HMAC signature and pins
+   *     `sender_id` to the token's `sub` (principal_id), preventing
+   *     impersonation.
    */
   serviceUrl?: string;
+  /**
+   * Optional service-level API key for X-API-Key header. Set ONLY by
+   * trusted infrastructure callers (services, gateways). Agent pods
+   * leave this unset and rely on Centrifugo-token auth instead.
+   */
+  apiKey?: string;
   /**
    * Optional Centrifugo WebSocket URL override. When omitted, the SDK
    * reads `centrifugo_url` from the token response.
@@ -33,6 +47,13 @@ export interface MessageSDKConfig {
 export interface TokenResponse {
   token: string;
   centrifugo_url: string;
+  /**
+   * Public Message Service REST base URL (e.g. `https://msg.beeos.ai`).
+   * When present, callers can use the `token` field as `Authorization:
+   * Bearer <jwt>` against MS REST directly. Empty/undefined means the
+   * caller should keep going through whatever proxy issued the token.
+   */
+  service_url?: string;
   channels: string[];
   principal_id: string;
   /** Unix epoch seconds. */

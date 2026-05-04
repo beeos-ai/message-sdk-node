@@ -56,10 +56,37 @@ export class MessageSDK {
   private _tokenRefreshCount = 0;
   private _onConnectedCallback: (() => void) | null = null;
   private logger: MessageSDKLogger;
+  /**
+   * Most recent Centrifugo token captured during `connect()` /
+   * subsequent `getToken` refreshes. Forwarded as `Authorization:
+   * Bearer <jwt>` on REST calls when `apiKey` is not configured —
+   * the principal-level auth path used by agent pods talking
+   * directly to MS REST.
+   */
+  private currentToken: string | null = null;
 
   constructor(config: MessageSDKConfig, logger: MessageSDKLogger) {
     this.config = config;
     this.logger = logger;
+  }
+
+  /**
+   * Late-bind the Message Service REST base URL after construction.
+   *
+   * Agent pods don't know the public MS REST URL until they call
+   * `POST /messaging/token` on the Agent Gateway and get back the
+   * `service_url` field on the token response. Callers can construct
+   * the SDK first (so they can wire `onMessage` handlers, etc.) and
+   * call this setter once the URL is discovered.
+   *
+   * Idempotent — calling with the same URL is a no-op. Empty or
+   * undefined values are ignored so callers can pass the token
+   * response through unconditionally.
+   */
+  setServiceUrl(url: string | undefined): void {
+    if (!url) return;
+    if (this.config.serviceUrl === url) return;
+    this.config = { ...this.config, serviceUrl: url };
   }
 
   // --- REST API (requires serviceUrl) ---
@@ -168,6 +195,16 @@ export class MessageSDK {
         `[message-sdk] Token fetch #${this._tokenRefreshCount} for principal=${principalId}`,
       );
       const resp = await provider(principalId);
+      // Cache the JWT so REST calls can forward it as
+      // Authorization: Bearer <jwt> for principal-level auth.
+      // Refreshes from centrifuge-js's internal getToken loop also
+      // land here, so the cached token stays in sync.
+      this.currentToken = resp.token;
+      // Late-discover MS REST URL when present so callers don't have
+      // to wire it twice (constructor + setter).
+      if (resp.service_url) {
+        this.setServiceUrl(resp.service_url);
+      }
       return resp.token;
     };
 
@@ -542,6 +579,19 @@ export class MessageSDK {
     }
     const url = `${this.config.serviceUrl}${path}`;
     const headers: Record<string, string> = {};
+    // Auth precedence:
+    //   1. apiKey (X-API-Key) — service-to-service mode
+    //   2. currentToken (Authorization: Bearer <jwt>) — principal-level
+    //      mode for agent pods, populated by connect()/getToken refresh
+    // Either one alone is enough for MS to authorise the request; agent
+    // pods that haven't connected yet (no token cached) and didn't set
+    // apiKey will hit MS unauthenticated and get 401 — that's the
+    // expected failure mode for "called too early".
+    if (this.config.apiKey) {
+      headers["X-API-Key"] = this.config.apiKey;
+    } else if (this.currentToken) {
+      headers["Authorization"] = `Bearer ${this.currentToken}`;
+    }
     const init: RequestInit = { method, headers };
     if (body !== undefined) {
       headers["Content-Type"] = "application/json";
