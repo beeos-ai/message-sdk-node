@@ -1,0 +1,54 @@
+{
+  "name": "@beeos-ai/message-sdk",
+  "version": "0.1.0",
+  "description": "BeeOS Message Service SDK for Node.js — Centrifugo real-time + REST primitives + Ed25519 messaging-token provider for agents.",
+  "license": "MIT",
+  "author": "BeeOS <dev@beeos.ai>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beeos-ai/beeos",
+    "directory": "sdks/message-sdk-node"
+  },
+  "homepage": "https://github.com/beeos-ai/beeos/tree/main/sdks/message-sdk-node",
+  "keywords": [
+    "beeos",
+    "agent",
+    "message-service",
+    "centrifugo",
+    "ed25519",
+    "sdk"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "centrifuge": "^5.5.3",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.0"
+  }
+}
