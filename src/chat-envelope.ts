@@ -233,12 +233,45 @@ function computeSessionKey(args: {
   channelId: string;
   generateSuffix: () => string;
 }): string {
+  // Priority 1 (legacy): explicit payload.session_key from server. The
+  // server-side a2a/chatinvoke paths historically embedded the platform
+  // agent UUID here (PR-FIX-F era), which broke openclaw's agentSend
+  // validation (sessionKey's agent segment must equal the agent's local
+  // name, not the platform UUID). The producer-side fix (PR-FIX-G)
+  // stopped emitting session_key entirely and now surfaces the wire
+  // protocol via metadata.protocol instead — see priority 2. We keep
+  // this branch only to honour an explicit session_key when a caller
+  // genuinely needs to pin one (test fixtures, future use cases that
+  // know their own agent name).
   const explicit = pickString(args.payload.session_key);
   if (explicit) return explicit;
 
-  const prefix = `agent:${args.localAgentId}:${args.source === "agent_request" ? "a2a" : "invoke"}`;
+  // Priority 2 (PR-FIX-G): read the wire protocol tag from
+  // payload.metadata.protocol. This is generic IM metadata — the SDK
+  // treats it as an opaque string and composes
+  // `agent:{localAgentId}:{protocol}:{discriminator}`, where the agent
+  // segment uses the SDK consumer's own localAgentId (not the server's
+  // platform UUID), so it lines up with whatever agent-runtime layer
+  // sits below the SDK (openclaw's agentSend validation, beeos-claw's
+  // BACKGROUND_SESSION_PATTERNS filter, etc.). The SDK is intentionally
+  // ignorant of those downstream concerns.
+  const payloadMeta = (args.payload.metadata && typeof args.payload.metadata === "object"
+    ? (args.payload.metadata as Record<string, unknown>)
+    : {});
+  const protoTag = pickString(payloadMeta.protocol);
 
-  if (args.source === "chat_message") {
+  // Priority 3 (legacy fallback): derive the tag from envelope.type so
+  // pre-PR-FIX-G producers (no metadata.protocol) keep working.
+  // agent_request → :a2a:, chat_message → :invoke:.
+  const tag = protoTag || (args.source === "agent_request" ? "a2a" : "invoke");
+  const prefix = `agent:${args.localAgentId}:${tag}`;
+
+  // When metadata.protocol is set we treat the message like a
+  // chat_message for sessionKey-discriminator purposes (prefer
+  // contextId, then channelId) regardless of envelope.type. This keeps
+  // the new server contract (always emit metadata.protocol) uniform
+  // across both envelope types.
+  if (args.source === "chat_message" || protoTag) {
     if (args.contextId) return `${prefix}:ctx-${args.contextId}`;
     if (args.channelId) return `${prefix}:ch-${args.channelId}`;
   }
