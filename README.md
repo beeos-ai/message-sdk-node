@@ -1,5 +1,30 @@
 # @beeos-ai/message-sdk
 
+> **DEPRECATED.** This package is the v1 BeeOS Messaging SDK. It is
+> superseded by [`@beeos-ai/messaging-sdk`](https://www.npmjs.com/package/@beeos-ai/messaging-sdk)
+> (`sdks/messaging-sdk-node/`), which ships **full v1 parity** —
+> identical `MessageSDK` class, same method signatures, same on-wire
+> envelope shape — alongside the new v2-native `MessagingClient`.
+>
+> Migration is a single-line diff:
+>
+> ```diff
+> -import { MessageSDK, extractChatPrompt } from "@beeos-ai/message-sdk";
+> +import { MessageSDK, extractChatPrompt } from "@beeos-ai/messaging-sdk";
+> ```
+>
+> Both BeeOS first-party consumers (`agents/beeos-claw`,
+> `agents/device-agent`) have already migrated; validation pinned
+> 1429 vitest cases across both repos with zero regressions vs this
+> v1 baseline. No new v1 features will land. Bug fixes are accepted
+> only for severity-1 issues with no v2 equivalent — open an issue
+> first.
+>
+> Schedule: this package will be removed from the npm registry one
+> release cycle after `@beeos-ai/messaging-sdk@0.2.0` is announced
+> as stable. Track the cutover in
+> [`backend/docs/adr/0016-messaging-v2-api.md`](https://github.com/beeos-ai/beeos/tree/main/backend/docs/adr/0016-messaging-v2-api.md).
+
 Node.js client for the BeeOS Message Service (IM channel-primitives + Centrifugo real-time + Ed25519 messaging-token provider).
 
 Used by both `beeos-claw` and `device-agent` to receive `chat_message` envelopes from L0 / A2A / MCP / OpenAPI invocations and reply over `ch:{channelId}` with `agent_reply` / `agent_reply_delta` carrying `in_reply_to`.

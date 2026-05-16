@@ -1,7 +1,7 @@
 {
   "name": "@beeos-ai/message-sdk",
   "version": "0.2.0",
-  "description": "BeeOS Message Service SDK for Node.js — Centrifugo real-time + REST primitives + Ed25519 messaging-token provider for agents.",
+  "description": "[DEPRECATED] BeeOS Message Service SDK for Node.js — Centrifugo real-time + REST primitives + Ed25519 messaging-token provider for agents. Superseded by @beeos-ai/messaging-sdk (full v1 parity).",
   "license": "MIT",
   "author": "BeeOS <dev@beeos.ai>",
   "repository": {
