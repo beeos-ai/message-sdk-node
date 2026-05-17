@@ -1,10 +1,11 @@
 /**
- * Ed25519-signed `messaging/token` provider for agents.
+ * Ed25519-signed messaging-token provider for agents.
  *
- * Wraps a call to `POST {agentGatewayUrl}/api/v1/messaging/token` with the
- * BeeOS agent Ed25519 signature scheme (see
- * `services/agent-gateway/internal/http/agent_gateway.go` for the server
- * side). Returns a `TokenProvider` compatible with `MessageSDK.connect`.
+ * Wraps a call to `POST {agentGatewayUrl}/api/v1/messaging/token` with
+ * the BeeOS agent Ed25519 signature scheme (see
+ * `services/agent-gateway/internal/http/agent_gateway.go` for the
+ * server side). Returns a `TokenProvider` compatible with
+ * `MessageClient`.
  *
  * Signed message format: `METHOD|PATH|timestamp|nonce`
  * Headers:
@@ -13,30 +14,34 @@
  *   X-Agent-Timestamp:  <unix seconds>
  *   X-Agent-Nonce:      <uuid>
  *
- * The `identity` interface is intentionally minimal so callers can plug in
- * their own keystore (file-backed, KMS, HSM, …) without taking a hard
- * dependency on a specific implementation.
+ * The `Identity` interface is intentionally minimal so callers can
+ * plug in their own keystore (file-backed, KMS, HSM, …) without
+ * taking a hard dependency on a specific implementation.
+ *
+ * Exposed as a subpath import to keep the root `MessageClient`
+ * surface free of agent-specific helpers:
+ *   import { buildAgentAuthHeaders, createTokenProvider } from "@beeos-ai/message-sdk/auth";
  */
 
 import { randomUUID } from "node:crypto";
 
-import type { TokenProvider, TokenResponse } from "./envelope.js";
+import type { TokenProvider, TokenResponse } from "./types.js";
 
 /**
  * Minimal identity contract required by the token provider.
  *
- *   - `publicKeyBase64` — base64-encoded raw 32-byte Ed25519 public key.
- *   - `sign(bytes)`     — Ed25519 signature over the canonical signing string.
+ *   - `publicKeyBase64()` — base64-encoded raw 32-byte Ed25519 public key.
+ *   - `sign(bytes)`       — Ed25519 signature over the canonical signing string.
  */
-export interface MessagingIdentity {
+export interface Identity {
   publicKeyBase64(): string | Promise<string>;
   sign(bytes: Uint8Array): Uint8Array | Promise<Uint8Array>;
 }
 
-export interface CreateMessagingTokenProviderOptions {
+export interface CreateTokenProviderOptions {
   /** Agent Gateway base URL (e.g. `https://agent-gw.beeos.ai`). */
   agentGatewayUrl: string;
-  identity: MessagingIdentity;
+  identity: Identity;
   /** Override fetch (defaults to globalThis.fetch). Used by tests. */
   fetchImpl?: typeof fetch;
   /** Override path (defaults to `/api/v1/messaging/token`). */
@@ -46,8 +51,8 @@ export interface CreateMessagingTokenProviderOptions {
 /**
  * Build the canonical Ed25519 signing string used by Agent Gateway.
  *
- * Exposed for unit tests and downstream code that needs to sign requests
- * to other Agent Gateway endpoints with the same scheme.
+ * Exposed for unit tests and downstream code that signs other Agent
+ * Gateway endpoints with the same scheme.
  */
 export function buildSigningString(
   method: string,
@@ -67,7 +72,7 @@ export function buildSigningString(
 export async function buildAgentAuthHeaders(
   method: string,
   urlPath: string,
-  identity: MessagingIdentity,
+  identity: Identity,
 ): Promise<Record<string, string>> {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = randomUUID();
@@ -85,29 +90,31 @@ export async function buildAgentAuthHeaders(
 }
 
 /**
- * Construct a `TokenProvider` that calls Agent Gateway with Ed25519 auth.
+ * Construct a `TokenProvider` that calls Agent Gateway with Ed25519
+ * auth.
  *
- * The returned function ignores the `principalId` argument (the Agent
- * Gateway derives the canonical principal from the Ed25519 public key
- * — pod-is-principal). Callers should still pass the resolved principal
- * back to `MessageSDK.connect` after the first token fetch.
+ * The returned function accepts an `identityId` argument but ignores
+ * it (Agent Gateway derives the canonical identity from the Ed25519
+ * public key — pod-is-principal). Callers should still pass the
+ * resolved identity back to `MessageClient.connect` after the first
+ * fetch.
  */
-export function createMessagingTokenProvider(
-  opts: CreateMessagingTokenProviderOptions,
+export function createTokenProvider(
+  opts: CreateTokenProviderOptions,
 ): TokenProvider {
   const baseUrl = opts.agentGatewayUrl.replace(/\/+$/, "");
   const path = opts.path ?? "/api/v1/messaging/token";
   const fetchImpl = opts.fetchImpl ?? fetch;
   const identity = opts.identity;
 
-  return async (principalId: string): Promise<TokenResponse> => {
+  return async (identityId: string): Promise<TokenResponse> => {
     const url = `${baseUrl}${path}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(await buildAgentAuthHeaders("POST", path, identity)),
     };
     const body: Record<string, unknown> = {};
-    if (principalId) body.principal_id = principalId;
+    if (identityId) body.principal_id = identityId;
     const resp = await fetchImpl(url, {
       method: "POST",
       headers,
@@ -119,6 +126,19 @@ export function createMessagingTokenProvider(
         `messaging-token POST ${path} returned ${resp.status}: ${text}`,
       );
     }
-    return (await resp.json()) as TokenResponse;
+    const raw = (await resp.json()) as Record<string, unknown>;
+    // Agent Gateway returns snake_case (mirrors the MS REST shape).
+    // Translate to camelCase TokenResponse at the SDK boundary so
+    // consumers never see snake_case fields.
+    return {
+      token: String(raw.token ?? ""),
+      centrifugoUrl: String(raw.centrifugo_url ?? ""),
+      serviceUrl: typeof raw.service_url === "string" ? raw.service_url : undefined,
+      identityId: String(raw.principal_id ?? identityId),
+      expiresAt: typeof raw.expires_at === "number" ? raw.expires_at : 0,
+      channels: Array.isArray(raw.channels)
+        ? (raw.channels.filter((c) => typeof c === "string") as string[])
+        : undefined,
+    };
   };
 }

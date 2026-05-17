@@ -1,39 +1,58 @@
+// `@beeos-ai/message-sdk` — single unified BeeOS Message Service SDK
+// for Node.js.
+//
+// Root export: `MessageClient` + supporting types and error sentinels.
+// Subpath exports for agent-side helpers:
+//
+//   import { MessageClient } from "@beeos-ai/message-sdk";
+//   import {
+//     extractChatPrompt,
+//     A2A_PROTOCOL_FIELDS,
+//   } from "@beeos-ai/message-sdk/chat-envelope";
+//   import {
+//     buildAgentAuthHeaders,
+//     createTokenProvider,
+//   } from "@beeos-ai/message-sdk/auth";
+
 export {
-  MessageSDK,
-} from "./sdk.js";
+  MessageClient,
+  ConversationsAPI,
+  MessagesAPI,
+  IdentitiesAPI,
+  ConversationSubscription,
+} from "./client.js";
 
 export type {
-  ChannelMessage,
   ConnectOptions,
-  ListChannelMessagesResponse,
-  MessageEnvelope,
-  MessageHandler,
-  MessageSDKConfig,
-  MessageSDKLogger,
-  SendChannelMessageInput,
-  SendChannelMessageResponse,
+  ConversationSubscriptionEvents,
+  MessageClientEvents,
+  MessageClientOptions,
+  RequestOptions,
+} from "./client.js";
+
+export type {
+  Conversation,
+  ConversationPage,
+  CreateConversationInput,
+  IdentitySendInput,
+  ListConversationsOptions,
+  ListOptions,
+  Logger,
+  Message,
+  MessagePage,
+  Presence,
+  SendInput,
   TokenProvider,
   TokenResponse,
-  WaitForReplyInput,
-} from "./envelope.js";
+  WaitInput,
+} from "./types.js";
 
 export {
-  buildAgentAuthHeaders,
-  buildSigningString,
-  createMessagingTokenProvider,
-} from "./auth.js";
-
-export type {
-  CreateMessagingTokenProviderOptions,
-  MessagingIdentity,
-} from "./auth.js";
-
-export {
-  A2A_PROTOCOL_FIELDS,
-  extractChatPrompt,
-} from "./chat-envelope.js";
-
-export type {
-  ChatPrompt,
-  ExtractChatPromptOptions,
-} from "./chat-envelope.js";
+  ConversationClosedError,
+  ConversationNotFoundError,
+  DuplicateIdError,
+  MessagingError,
+  NoSubscriberError,
+  NotMemberError,
+  WaitTimeoutError,
+} from "./errors.js";

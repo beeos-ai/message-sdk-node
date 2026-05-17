@@ -1,60 +1,56 @@
 /**
- * `chat_message` / `agent_request` envelope adapter.
+ * `chat_message` / `agent_request` content adapter.
  *
- * BeeOS L0 AgentInvocationService publishes `chat_message` envelopes to
- * a target agent's personal Centrifugo channel. The payload shape is
- * defined in `backend/pkg/chatinvoke/invoker.go` (`buildChatPayload`):
+ * BeeOS L0 AgentInvocationService publishes `chat_message` messages
+ * to a target agent's personal Centrifugo channel. The content shape
+ * is defined in `backend/pkg/chatinvoke/invoker.go` (`buildChatPayload`):
  *
  *   {
  *     "message": "<user prompt>",
  *     "channel_id": "<im channel for replies>",
  *     "context_id": "<stable session anchor, defaults to channel_id>",
- *     "metadata": { "target_agent_id": "<agentId>", "delivery_principal": "<pid>" }
+ *     "metadata": { "target_agent_id": "<agentId>", "delivery_principal": "<pid>", "protocol": "..." }
  *   }
  *
  * Some legacy callers (A2A SendTask before the L0 cutover) publish
- * `agent_request` envelopes with `payload.parts: [{ type: "text", text }]`
- * and `payload.files: ["<url>", …]` — kept here as a fallback so the
+ * `agent_request` envelopes with `content.parts: [{ type: "text", text }]`
+ * and `content.files: ["<url>", …]` — kept here as a fallback so the
  * same extractor works for both transports.
  *
- * The returned `ChatPrompt` has a deliberately minimal, fixed shape so
- * agents cannot accidentally read protocol-specific A2A / MCP / OpenAPI
- * fields off the envelope (see `A2A_PROTOCOL_FIELDS` for the exclusion
- * list). The SDK is the boundary that enforces the L0 protocol-agnostic
- * contract — agents must depend ONLY on the keys in `ChatPrompt`.
+ * The returned `ChatPrompt` has a deliberately minimal, fixed shape
+ * so agents cannot accidentally read protocol-specific A2A / MCP /
+ * OpenAPI fields off the content (see `A2A_PROTOCOL_FIELDS` for the
+ * exclusion list). The SDK is the boundary that enforces the L0
+ * protocol-agnostic contract — agents must depend ONLY on the keys
+ * in `ChatPrompt`.
+ *
+ * Exposed as a subpath import to keep the root client API surface
+ * minimal:
+ *   import { extractChatPrompt, A2A_PROTOCOL_FIELDS } from "@beeos-ai/message-sdk/chat-envelope";
  */
 
-import type { MessageEnvelope } from "./envelope.js";
+import type { Message } from "./types.js";
 
 /**
  * Output shape — fixed surface. Adding fields is a breaking change.
  *
  * - `message`     — prompt text to feed the model.
  * - `files`       — best-effort `string[]` of URLs, NOT object form.
- *                   Extracted from `payload.parts[].file_url` and the
- *                   legacy `payload.files: string[]` shape.
- * - `channelId`   — IM channel agents publish replies to (`ch:{channelId}`).
+ * - `channelId`   — IM conversation agents publish replies to.
  *                   May be `undefined` for legacy `agent_request` paths.
- * - `contextId`   — stable session anchor; agents derive their per-session
- *                   state key off this when present.
- * - `sessionKey`  — derived session id used by agents that already key
- *                   local sessions off a string id. Format:
+ * - `contextId`   — stable session anchor.
+ * - `sessionKey`  — derived session id used by agents that already
+ *                   key local sessions off a string id. Format:
  *                     - `chat_message`:
- *                       - explicit `payload.session_key`, OR
- *                       - `agent:{localAgentId}:invoke:ctx-{contextId}`, OR
- *                       - `agent:{localAgentId}:invoke:ch-{channelId}`, OR
- *                       - `agent:{localAgentId}:invoke:{generateSuffix()}`
+ *                       - explicit `content.session_key`, OR
+ *                       - `agent:{localAgentId}:{protocol}:ctx-{contextId}`, OR
+ *                       - `agent:{localAgentId}:{protocol}:ch-{channelId}`, OR
+ *                       - `agent:{localAgentId}:{protocol}:{generateSuffix()}`
  *                     - `agent_request`:
- *                       - explicit `payload.session_key`, OR
+ *                       - explicit `content.session_key`, OR
  *                       - `agent:{localAgentId}:a2a:{generateSuffix()}`
- * - `messageId`   — request `message_id`, must be echoed back as
- *                   `in_reply_to` on the agent's reply so the caller's
- *                   `/wait` matches. Resolved as
- *                   `envelope.message_id ?? envelope.metadata.message_id`
- *                   (payload.message_id is intentionally NOT consulted —
- *                   it is reserved for protocol headers that must not
- *                   leak through this boundary). Empty strings are
- *                   normalised to `undefined`.
+ * - `messageId`   — request id, must be echoed back as `replyTo` on
+ *                   the agent's reply so the caller's `/wait` matches.
  */
 export interface ChatPrompt {
   message: string;
@@ -69,29 +65,29 @@ export interface ExtractChatPromptOptions {
   /** Inbound transport tag — used for sessionKey prefix selection. */
   source?: "chat_message" | "agent_request";
   /**
-   * Optional local agent identity. When set, prefixes the sessionKey as
-   * `agent:{localAgentId}:invoke:...` / `agent:{localAgentId}:a2a:...`.
-   * Without it the prefix collapses to `agent::invoke:...` — useful for
-   * tests but never expected in production.
+   * Optional local agent identity. When set, prefixes the sessionKey
+   * as `agent:{localAgentId}:invoke:...` / `agent:{localAgentId}:a2a:...`.
+   * Without it the prefix collapses to `agent::invoke:...` — useful
+   * for tests but never expected in production.
    */
   localAgentId?: string;
   /**
-   * Random suffix generator for sessionKeys when neither contextId nor
-   * channelId is available. Defaults to `Math.random().toString(36)`.
+   * Random suffix generator for sessionKeys when neither contextId
+   * nor channelId is available. Defaults to `Math.random().toString(36)`.
    * Tests pass a deterministic stub.
    */
   generateSuffix?: () => string;
 }
 
 /**
- * Forbidden A2A / MCP / OpenAPI protocol header fields that must never
- * leak from the L0 transport into the agent prompt. The extractor
- * silently ignores any of these on the inbound payload and never emits
- * them on the output `ChatPrompt`.
+ * Forbidden A2A / MCP / OpenAPI protocol header fields that must
+ * never leak from the L0 transport into the agent prompt. The
+ * extractor silently ignores any of these on the inbound content and
+ * never emits them on the output `ChatPrompt`.
  *
- * Treat this list as part of the `ChatPrompt` contract — adding a new
- * forbidden field is a backward-compatible safety tightening; removing
- * one is a breaking semantic change.
+ * Treat this list as part of the `ChatPrompt` contract — adding a
+ * new forbidden field is a backward-compatible safety tightening;
+ * removing one is a breaking semantic change.
  */
 export const A2A_PROTOCOL_FIELDS: readonly string[] = Object.freeze([
   "task_id",
@@ -109,47 +105,39 @@ export const A2A_PROTOCOL_FIELDS: readonly string[] = Object.freeze([
 ]);
 
 /**
- * Extract a normalized `ChatPrompt` from an inbound envelope.
- * Returns `null` when the payload is missing the required `message` text
- * so handlers can no-op safely.
+ * Extract a normalized `ChatPrompt` from an inbound v2 message.
+ * Returns `null` when the content is missing the required `message`
+ * text so handlers can no-op safely.
+ *
+ * NOTE: the parser reads `msg.content`, `msg.conversationId`, `msg.id`.
+ * It does NOT touch `msg.sender`, `msg.replyTo`, `msg.createdAt` —
+ * those are L1 transport metadata, not agent-prompt input.
  */
 export function extractChatPrompt(
-  envelope: MessageEnvelope,
+  msg: Message,
   opts: ExtractChatPromptOptions = {},
 ): ChatPrompt | null {
-  const payload = (envelope.payload ?? {}) as Record<string, unknown>;
-  const meta = (envelope.metadata ?? {}) as Record<string, unknown>;
-  const payloadMeta = (payload.metadata ?? {}) as Record<string, unknown>;
+  const content = (msg.content ?? {}) as Record<string, unknown>;
+  const contentMeta = (content.metadata ?? {}) as Record<string, unknown>;
 
-  const message = extractMessageText(payload);
-  if (!message) return null;
+  const messageText = extractMessageText(content);
+  if (!messageText) return null;
 
-  // Channel precedence: envelope > metadata > payload — locked in by
-  // beeos-claw test "prefers envelope.channel_id over metadata over payload".
-  const channelId = pickString(
-    envelope.channel_id,
-    meta.channel_id,
-    payloadMeta.channel_id,
-    payload.channel_id,
-  );
+  // Channel precedence: outer message.conversationId > content.channel_id.
+  const channelId = pickString(msg.conversationId, content.channel_id);
 
-  const contextId = pickString(payload.context_id, payloadMeta.context_id);
+  const contextId = pickString(content.context_id, contentMeta.context_id);
 
-  // Files: prefer parts[].file_url, fall back to payload.files (already
-  // a string[] in the legacy A2A path).
-  const files = extractFiles(payload);
+  const files = extractFiles(content);
 
-  // messageId precedence: envelope > envelope.metadata. Payload.message_id
-  // is intentionally NOT consulted — it is reserved for protocol headers
-  // that must never leak through this boundary.
-  const messageIdRaw = pickString(envelope.message_id, meta.message_id);
+  const messageIdRaw = pickString(msg.id);
   const messageId = messageIdRaw || undefined;
 
   const source: "chat_message" | "agent_request" =
-    opts.source ?? (envelope.type === "agent_request" ? "agent_request" : "chat_message");
+    opts.source ?? (msg.type === "agent_request" ? "agent_request" : "chat_message");
 
   const sessionKey = computeSessionKey({
-    payload,
+    content,
     source,
     localAgentId: opts.localAgentId ?? "",
     contextId,
@@ -158,7 +146,7 @@ export function extractChatPrompt(
   });
 
   const out: ChatPrompt = {
-    message,
+    message: messageText,
     files,
     sessionKey,
   };
@@ -168,11 +156,11 @@ export function extractChatPrompt(
   return out;
 }
 
-function extractMessageText(payload: Record<string, unknown>): string {
-  const direct = pickString(payload.message);
+function extractMessageText(content: Record<string, unknown>): string {
+  const direct = pickString(content.message);
   if (direct) return direct;
 
-  const parts = payload.parts;
+  const parts = content.parts;
   if (Array.isArray(parts)) {
     const chunks: string[] = [];
     for (const part of parts) {
@@ -191,10 +179,10 @@ function extractMessageText(payload: Record<string, unknown>): string {
   return "";
 }
 
-function extractFiles(payload: Record<string, unknown>): string[] {
+function extractFiles(content: Record<string, unknown>): string[] {
   const out: string[] = [];
 
-  const parts = payload.parts;
+  const parts = content.parts;
   if (Array.isArray(parts)) {
     for (const part of parts) {
       if (!part || typeof part !== "object") continue;
@@ -205,7 +193,7 @@ function extractFiles(payload: Record<string, unknown>): string[] {
     }
   }
 
-  const filesField = payload.files;
+  const filesField = content.files;
   if (Array.isArray(filesField)) {
     for (const item of filesField) {
       if (typeof item === "string" && item.length > 0) {
@@ -226,51 +214,35 @@ function extractFiles(payload: Record<string, unknown>): string[] {
 }
 
 function computeSessionKey(args: {
-  payload: Record<string, unknown>;
+  content: Record<string, unknown>;
   source: "chat_message" | "agent_request";
   localAgentId: string;
   contextId: string;
   channelId: string;
   generateSuffix: () => string;
 }): string {
-  // Priority 1 (legacy): explicit payload.session_key from server. The
-  // server-side a2a/chatinvoke paths historically embedded the platform
-  // agent UUID here (PR-FIX-F era), which broke openclaw's agentSend
-  // validation (sessionKey's agent segment must equal the agent's local
-  // name, not the platform UUID). The producer-side fix (PR-FIX-G)
-  // stopped emitting session_key entirely and now surfaces the wire
-  // protocol via metadata.protocol instead — see priority 2. We keep
-  // this branch only to honour an explicit session_key when a caller
-  // genuinely needs to pin one (test fixtures, future use cases that
-  // know their own agent name).
-  const explicit = pickString(args.payload.session_key);
+  // Priority 1: explicit `content.session_key` — caller pinned a key
+  // (test fixtures, future use cases that know their own agent name).
+  const explicit = pickString(args.content.session_key);
   if (explicit) return explicit;
 
-  // Priority 2 (PR-FIX-G): read the wire protocol tag from
-  // payload.metadata.protocol. This is generic IM metadata — the SDK
-  // treats it as an opaque string and composes
-  // `agent:{localAgentId}:{protocol}:{discriminator}`, where the agent
-  // segment uses the SDK consumer's own localAgentId (not the server's
-  // platform UUID), so it lines up with whatever agent-runtime layer
-  // sits below the SDK (openclaw's agentSend validation, beeos-claw's
-  // BACKGROUND_SESSION_PATTERNS filter, etc.). The SDK is intentionally
-  // ignorant of those downstream concerns.
-  const payloadMeta = (args.payload.metadata && typeof args.payload.metadata === "object"
-    ? (args.payload.metadata as Record<string, unknown>)
+  // Priority 2: read the wire protocol tag from
+  // `content.metadata.protocol`. The SDK treats it as an opaque
+  // string and composes `agent:{localAgentId}:{protocol}:{discriminator}`,
+  // where the agent segment uses the consumer's own localAgentId
+  // (not the platform UUID), so it lines up with whatever
+  // agent-runtime layer sits below the SDK.
+  const contentMeta = (args.content.metadata && typeof args.content.metadata === "object"
+    ? (args.content.metadata as Record<string, unknown>)
     : {});
-  const protoTag = pickString(payloadMeta.protocol);
+  const protoTag = pickString(contentMeta.protocol);
 
-  // Priority 3 (legacy fallback): derive the tag from envelope.type so
-  // pre-PR-FIX-G producers (no metadata.protocol) keep working.
-  // agent_request → :a2a:, chat_message → :invoke:.
+  // Priority 3: derive the tag from `msg.type` for pre-protocol-tag
+  // producers (no metadata.protocol). agent_request → :a2a:,
+  // chat_message → :invoke:.
   const tag = protoTag || (args.source === "agent_request" ? "a2a" : "invoke");
   const prefix = `agent:${args.localAgentId}:${tag}`;
 
-  // When metadata.protocol is set we treat the message like a
-  // chat_message for sessionKey-discriminator purposes (prefer
-  // contextId, then channelId) regardless of envelope.type. This keeps
-  // the new server contract (always emit metadata.protocol) uniform
-  // across both envelope types.
   if (args.source === "chat_message" || protoTag) {
     if (args.contextId) return `${prefix}:ctx-${args.contextId}`;
     if (args.channelId) return `${prefix}:ch-${args.channelId}`;

@@ -1,14 +1,20 @@
-import { generateKeyPairSync, createPublicKey, sign as cryptoSign, verify as cryptoVerify } from "node:crypto";
+import {
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  sign as cryptoSign,
+  verify as cryptoVerify,
+} from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
 import {
   buildAgentAuthHeaders,
   buildSigningString,
-  createMessagingTokenProvider,
-  type MessagingIdentity,
+  createTokenProvider,
+  type Identity,
 } from "../src/auth.js";
-import type { TokenResponse } from "../src/envelope.js";
+import type { TokenResponse } from "../src/types.js";
 
 function generateEd25519(): {
   publicKeyRaw: Uint8Array;
@@ -28,7 +34,7 @@ function generateEd25519(): {
 }
 
 function makeIdentity(): {
-  identity: MessagingIdentity;
+  identity: Identity;
   publicKeyDer: Buffer;
 } {
   const { publicKeyRaw, privateKeyDer } = generateEd25519();
@@ -38,16 +44,14 @@ function makeIdentity(): {
     type: "spki",
   });
   const publicKeyDer = keyObj.export({ type: "spki", format: "der" }) as Buffer;
-  const identity: MessagingIdentity = {
+  const privKeyObj = createPrivateKey({
+    key: privateKeyDer,
+    format: "der",
+    type: "pkcs8",
+  });
+  const identity: Identity = {
     publicKeyBase64: () => Buffer.from(publicKeyRaw).toString("base64"),
-    sign: (bytes) => {
-      const privKeyObj = require("node:crypto").createPrivateKey({
-        key: privateKeyDer,
-        format: "der",
-        type: "pkcs8",
-      });
-      return new Uint8Array(cryptoSign(null, Buffer.from(bytes), privKeyObj));
-    },
+    sign: (bytes) => new Uint8Array(cryptoSign(null, Buffer.from(bytes), privKeyObj)),
   };
   return { identity, publicKeyDer };
 }
@@ -83,12 +87,13 @@ describe("buildAgentAuthHeaders", () => {
   });
 });
 
-describe("createMessagingTokenProvider", () => {
-  it("POSTs to /api/v1/messaging/token with Ed25519 headers", async () => {
+describe("createTokenProvider", () => {
+  it("POSTs to /api/v1/messaging/token with Ed25519 headers + camelCases the response", async () => {
     const { identity } = makeIdentity();
-    const expected: TokenResponse = {
+    const wire = {
       token: "tok-123",
       centrifugo_url: "wss://msg/ws",
+      service_url: "https://msg.example.com",
       channels: ["personal:instance-7"],
       principal_id: "instance-7",
       expires_at: 9999,
@@ -97,20 +102,27 @@ describe("createMessagingTokenProvider", () => {
     let captured: { url?: string; init?: RequestInit } = {};
     const fakeFetch: typeof fetch = async (url, init) => {
       captured = { url: String(url), init };
-      return new Response(JSON.stringify(expected), {
+      return new Response(JSON.stringify(wire), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     };
 
-    const provider = createMessagingTokenProvider({
+    const provider = createTokenProvider({
       agentGatewayUrl: "https://agent-gw.beeos.ai/",
       identity,
       fetchImpl: fakeFetch,
     });
 
-    const tok = await provider("");
-    expect(tok).toEqual(expected);
+    const tok: TokenResponse = await provider("");
+    expect(tok).toEqual({
+      token: "tok-123",
+      centrifugoUrl: "wss://msg/ws",
+      serviceUrl: "https://msg.example.com",
+      identityId: "instance-7",
+      expiresAt: 9999,
+      channels: ["personal:instance-7"],
+    });
 
     expect(captured.url).toBe("https://agent-gw.beeos.ai/api/v1/messaging/token");
     expect(captured.init?.method).toBe("POST");
@@ -139,7 +151,7 @@ describe("createMessagingTokenProvider", () => {
         { status: 200 },
       );
     };
-    const provider = createMessagingTokenProvider({
+    const provider = createTokenProvider({
       agentGatewayUrl: "https://agent-gw.beeos.ai",
       identity,
       fetchImpl: fakeFetch,
@@ -152,7 +164,7 @@ describe("createMessagingTokenProvider", () => {
     const { identity } = makeIdentity();
     const fakeFetch: typeof fetch = async () =>
       new Response("instance not found", { status: 404 });
-    const provider = createMessagingTokenProvider({
+    const provider = createTokenProvider({
       agentGatewayUrl: "https://agent-gw.beeos.ai",
       identity,
       fetchImpl: fakeFetch,
