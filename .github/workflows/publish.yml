@@ -1,0 +1,56 @@
+name: Publish to npm
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-message-sdk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build & Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Check if version already published
+        id: check
+        run: |
+          LOCAL_VER=$(node -p "require('./package.json').version")
+          REMOTE_VER=$(npm view @beeos-ai/message-sdk version 2>/dev/null || echo "0.0.0")
+          echo "local=${LOCAL_VER}" >> "$GITHUB_OUTPUT"
+          echo "remote=${REMOTE_VER}" >> "$GITHUB_OUTPUT"
+          if [ "$LOCAL_VER" = "$REMOTE_VER" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Version ${LOCAL_VER} already published, skipping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish to npm
+        if: steps.check.outputs.skip == 'false'
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
