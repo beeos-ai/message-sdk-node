@@ -1,6 +1,6 @@
 {
   "name": "@beeos-ai/message-sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "BeeOS Message Service SDK for Node.js — unified MessageClient (REST + realtime), Ed25519 token provider, chat-envelope extractor.",
   "license": "MIT",
   "author": "BeeOS <dev@beeos.ai>",
