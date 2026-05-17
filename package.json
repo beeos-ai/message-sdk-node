@@ -1,15 +1,17 @@
 {
   "name": "@beeos-ai/message-sdk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "BeeOS Message Service SDK for Node.js — unified MessageClient (REST + realtime), Ed25519 token provider, chat-envelope extractor.",
   "license": "MIT",
   "author": "BeeOS <dev@beeos.ai>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/beeos-ai/beeos",
-    "directory": "sdks/message-sdk-node"
+    "url": "https://github.com/beeos-ai/message-sdk-node.git"
   },
-  "homepage": "https://github.com/beeos-ai/beeos/tree/main/sdks/message-sdk-node",
+  "homepage": "https://github.com/beeos-ai/message-sdk-node#readme",
+  "bugs": {
+    "url": "https://github.com/beeos-ai/message-sdk-node/issues"
+  },
   "keywords": [
     "beeos",
     "agent",
