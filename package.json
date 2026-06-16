@@ -50,7 +50,8 @@
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:vectors": "node scripts/check-reducer-vectors.mjs"
   },
   "dependencies": {
     "centrifuge": "^5.5.3",

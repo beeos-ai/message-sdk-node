@@ -1,0 +1,113 @@
+{
+  "_comment": "CANONICAL shared conformance vectors for the streaming delta reducer (ADR-0025). Folded sequentially from an empty ReducedSnapshot. results[i] is the ApplyResult for frame i: ok|rebase|ignored. final_* is the snapshot after all frames. This file is duplicated byte-for-byte into sdks/message-sdk-go/testdata and sdks/message-sdk-node/test so the Go (MS), Go (SDK) and TS reducers stay in lockstep. Edit here first.",
+  "cases": [
+    {
+      "name": "created base then two in-order appends",
+      "frames": [
+        { "event": "message.created", "body": "" },
+        { "event": "message.delta", "body_from": 0, "body_chunk": "Hello" },
+        { "event": "message.delta", "body_from": 5, "body_chunk": " world" }
+      ],
+      "results": ["ok", "ok", "ok"],
+      "final_body": "Hello world",
+      "final_state": ""
+    },
+    {
+      "name": "finalize via full message.updated replaces body and sets terminal state",
+      "frames": [
+        { "event": "message.created", "body": "" },
+        { "event": "message.delta", "body_from": 0, "body_chunk": "partial" },
+        { "event": "message.updated", "body": "partial final", "state": "completed", "stop_reason": "end_turn" }
+      ],
+      "results": ["ok", "ok", "ok"],
+      "final_body": "partial final",
+      "final_state": "completed",
+      "final_stop_reason": "end_turn"
+    },
+    {
+      "name": "duplicate delta replay is idempotent",
+      "frames": [
+        { "event": "message.created", "body": "" },
+        { "event": "message.delta", "body_from": 0, "body_chunk": "abc" },
+        { "event": "message.delta", "body_from": 0, "body_chunk": "abc" },
+        { "event": "message.delta", "body_from": 3, "body_chunk": "def" }
+      ],
+      "results": ["ok", "ok", "ok", "ok"],
+      "final_body": "abcdef",
+      "final_state": ""
+    },
+    {
+      "name": "overlapping replay appends only the tail",
+      "frames": [
+        { "event": "message.created", "body": "" },
+        { "event": "message.delta", "body_from": 0, "body_chunk": "abcd" },
+        { "event": "message.delta", "body_from": 2, "body_chunk": "cdef" }
+      ],
+      "results": ["ok", "ok", "ok"],
+      "final_body": "abcdef",
+      "final_state": ""
+    },
+    {
+      "name": "gap delta after base signals rebase and leaves body untouched",
+      "frames": [
+        { "event": "message.created", "body": "" },
+        { "event": "message.delta", "body_from": 5, "body_chunk": "world" }
+      ],
+      "results": ["ok", "rebase"],
+      "final_body": "",
+      "final_state": ""
+    },
+    {
+      "name": "delta-first join at offset zero works without explicit base",
+      "frames": [
+        { "event": "message.delta", "body_from": 0, "body_chunk": "hi" }
+      ],
+      "results": ["ok"],
+      "final_body": "hi",
+      "final_state": ""
+    },
+    {
+      "name": "delta-first join past zero signals rebase",
+      "frames": [
+        { "event": "message.delta", "body_from": 4, "body_chunk": "late" }
+      ],
+      "results": ["rebase"],
+      "final_body": "",
+      "final_state": ""
+    },
+    {
+      "name": "multibyte utf8 byte offsets align across runtimes",
+      "frames": [
+        { "event": "message.created", "body": "" },
+        { "event": "message.delta", "body_from": 0, "body_chunk": "héllo" },
+        { "event": "message.delta", "body_from": 6, "body_chunk": " 世界" }
+      ],
+      "results": ["ok", "ok", "ok"],
+      "final_body": "héllo 世界",
+      "final_state": ""
+    },
+    {
+      "name": "delta carries parts and streaming state along the way",
+      "frames": [
+        { "event": "message.created", "body": "", "state": "streaming" },
+        { "event": "message.delta", "body_from": 0, "body_chunk": "x", "parts": [{ "type": "thinking", "text": "hmm" }], "state": "streaming" },
+        { "event": "message.delta", "body_from": 1, "body_chunk": "y", "state": "completed", "stop_reason": "end_turn" }
+      ],
+      "results": ["ok", "ok", "ok"],
+      "final_body": "xy",
+      "final_state": "completed",
+      "final_stop_reason": "end_turn",
+      "final_parts": [{ "type": "thinking", "text": "hmm" }]
+    },
+    {
+      "name": "unknown event is ignored forward-compatibly",
+      "frames": [
+        { "event": "message.created", "body": "seed" },
+        { "event": "message.future_kind", "body": "should not apply" }
+      ],
+      "results": ["ok", "ignored"],
+      "final_body": "seed",
+      "final_state": ""
+    }
+  ]
+}
