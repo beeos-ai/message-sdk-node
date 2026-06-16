@@ -46,5 +46,55 @@ describe("envelopeToMessage", () => {
     expect(msg.createdAt).toBe("");
     expect(msg.replyTo).toBeUndefined();
     expect(msg.content).toBe(0);
+    // v3 fields default to undefined on a pre-v3 envelope.
+    expect(msg.body).toBeUndefined();
+    expect(msg.parts).toBeUndefined();
+    expect(msg.state).toBeUndefined();
+    expect(msg.stopReason).toBeUndefined();
+    expect(msg.updatedAt).toBeUndefined();
+  });
+
+  it("surfaces v3 envelope fields end-to-end (body / parts / state / stop_reason / updated_at)", () => {
+    const env: WireEnvelope = {
+      type: "agent_reply",
+      payload: { text: "hello world" },
+      channel_id: "conv-v3",
+      message_id: "msg-v3-1",
+      in_reply_to: "user-1",
+      publisher_id: "agent:beeos-claw",
+      created_at: "2026-05-21T05:00:00Z",
+      updated_at: "2026-05-21T05:00:01Z",
+      event: "message.updated",
+      body: "hello world",
+      parts: [
+        { type: "thinking", text: "deliberate ...", state: "done" },
+      ],
+      state: "completed",
+      stop_reason: "end_turn",
+    };
+    const msg = envelopeToMessage(env);
+    expect(msg.body).toBe("hello world");
+    expect(msg.parts).toHaveLength(1);
+    expect(msg.parts?.[0]).toMatchObject({
+      type: "thinking",
+      text: "deliberate ...",
+    });
+    expect(msg.state).toBe("completed");
+    expect(msg.stopReason).toBe("end_turn");
+    expect(msg.updatedAt).toBe("2026-05-21T05:00:01Z");
+  });
+
+  it("keeps streaming envelopes non-terminal (state='streaming')", () => {
+    const env: WireEnvelope = {
+      type: "agent_reply",
+      payload: { text: "partial" },
+      channel_id: "conv-v3",
+      message_id: "msg-v3-2",
+      state: "streaming",
+      body: "partial",
+    };
+    const msg = envelopeToMessage(env);
+    expect(msg.state).toBe("streaming");
+    expect(msg.stopReason).toBeUndefined();
   });
 });

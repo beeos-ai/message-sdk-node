@@ -39,13 +39,51 @@ export type {
   ListOptions,
   Logger,
   Message,
+  MessageEnvelope,
   MessagePage,
+  MessageState,
+  MessageStreamOptions,
+  Part,
+  PartState,
   Presence,
   SendInput,
+  StartStreamInput,
+  StopReason,
   TokenProvider,
   TokenResponse,
   WaitInput,
 } from "./types.js";
+
+export { MessageStream, StreamTerminatedError } from "./stream.js";
+
+export {
+  MessageStreamReader,
+  defaultStreamDialer,
+  iterLines,
+} from "./sse-stream.js";
+
+export type {
+  BackfillTruncatedEvent,
+  MessageStreamReaderEvents,
+  ReplayCompleteEvent,
+  StreamDialer,
+  StreamOptions,
+  StreamResponse,
+} from "./sse-stream.js";
+
+export {
+  applyWireFrame,
+  appendedText,
+  emptySnapshot,
+  snapshotBody,
+  snapshotFromBody,
+  MEDIA_TYPE_DELTA_WIRE,
+  WIRE_EVENT_CREATED,
+  WIRE_EVENT_UPDATED,
+  WIRE_EVENT_DELTA,
+} from "./reducer.js";
+
+export type { ApplyResult, ReducedSnapshot, WireFrame } from "./reducer.js";
 
 export {
   ConversationClosedError,
