@@ -726,6 +726,7 @@ export function rawToEnvelope(raw: Record<string, unknown>): MessageEnvelope {
         ? (raw.stop_reason as StopReason)
         : undefined,
     content: raw.content,
+    idempotent: raw.idempotent === true,
     createdAt: String(raw.created_at ?? ""),
     updatedAt:
       typeof raw.updated_at === "string" ? raw.updated_at : undefined,

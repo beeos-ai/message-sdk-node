@@ -32,8 +32,10 @@ export type {
 
 export type {
   Conversation,
+  ConversationFocus,
   ConversationPage,
   CreateConversationInput,
+  GetConversationFocusInput,
   IdentitySendInput,
   ListConversationsOptions,
   ListOptions,
@@ -46,6 +48,7 @@ export type {
   Part,
   PartState,
   Presence,
+  PutConversationFocusInput,
   SendInput,
   StartStreamInput,
   StopReason,

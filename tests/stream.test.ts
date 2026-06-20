@@ -136,6 +136,34 @@ describe("MessageStream — v3 envelope flow", () => {
     expect(calls[0].headers["idempotency-key"]).toBe("msg-9");
   });
 
+  it("surfaces idempotent open responses", async () => {
+    const { fetch: f } = captureFetch(() => ({
+      status: 200,
+      body: {
+        id: "msg-idem",
+        conversation_id: "conv-1",
+        type: "agent_reply",
+        sender: "agent:bob",
+        body: "",
+        state: "streaming",
+        idempotent: true,
+        created_at: "2026-05-20T00:00:00Z",
+      },
+    }));
+    globalThis.fetch = f;
+
+    const stream = makeClient().messages.startStream({
+      conversationId: "conv-1",
+      id: "msg-idem",
+      replyTo: "msg-0",
+    });
+
+    await expect(stream.opened()).resolves.toMatchObject({
+      id: "msg-idem",
+      idempotent: true,
+    });
+  });
+
   it("throws StreamTerminatedError when mutating after finalize", async () => {
     const initial = {
       id: "msg-2",
