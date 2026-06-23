@@ -13,16 +13,24 @@ import {
   type WireFrame,
 } from "../src/index.js";
 
-// Shared conformance vectors — read DIRECTLY from the single canonical
-// MS file (no in-repo copy), so the Go MS reducer, Go SDK reducer, and
-// this TS reducer can never silently diverge. The Go SDK does the same
-// (backend/sdks/message-sdk-go/reducer_test.go). This is a test-only
-// in-repo path; it is never bundled into the published npm package.
+// Shared cross-language conformance vectors (ADR-0025): the Go MS reducer,
+// Go SDK reducer, and this TS reducer must never silently diverge.
+//
+// The single source of truth lives in the backend monorepo at
+//   services/message/pkg/domain/message/testdata/reducer_vectors.json
+// The Go SDK reads it directly because it ships inside that monorepo
+// (backend/sdks/message-sdk-go/reducer_test.go). This SDK is published as a
+// standalone npm package from its own repository, so it CANNOT reach across
+// repos at test time — doing so broke the publish pipeline (the backend path
+// does not exist in a standalone checkout). We therefore vendor a verbatim
+// copy under tests/testdata/ so this package is self-contained and the
+// conformance suite runs on every publish. Drift against the canonical file
+// is guarded separately (scripts/check-reducer-vectors.mjs / CI), not by a
+// runtime cross-repo read. The fixture lives under tests/ and is excluded
+// from the published tarball by package.json "files".
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// tests/ -> repo root is ../../../ ; then into the backend MS testdata.
-const CANONICAL_VECTORS =
-  "../../../backend/services/message/pkg/domain/message/testdata/reducer_vectors.json";
+const CANONICAL_VECTORS = "./testdata/reducer_vectors.json";
 
 interface VectorCase {
   name: string;
