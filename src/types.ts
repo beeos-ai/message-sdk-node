@@ -10,6 +10,11 @@ export interface Conversation {
   id: string;
   participants: string[];
   metadata?: Record<string, string>;
+  owner_identity_id?: string;
+  target_identity_id?: string;
+  target_kind?: string;
+  title?: string;
+  last_activity_at?: string;
   state: "open" | "closed";
   closed_reason?: string;
   single_shot?: boolean;
@@ -21,6 +26,10 @@ export interface Conversation {
 export interface CreateConversationInput {
   participants: string[];
   metadata?: Record<string, string>;
+  ownerIdentityId?: string;
+  targetIdentityId?: string;
+  targetKind?: string;
+  title?: string;
   /** Single-shot conversation: closes on first reply. */
   singleShot?: boolean;
   /** Deadline in milliseconds (server adds Date.now()). */
@@ -213,6 +222,13 @@ export interface MessageEnvelope {
   /** Legacy v1/v2 payload mirror — v3 readers ignore. */
   content?: unknown;
 
+  /**
+   * True only on v3 POST when the server returned an existing row for
+   * the same Idempotency-Key. Runtime connectors use this as a
+   * lightweight processing claim and skip duplicate dispatch.
+   */
+  idempotent?: boolean;
+
   createdAt: string;
   updatedAt?: string;
 }
@@ -315,6 +331,11 @@ export interface WaitInput {
 export interface ListOptions {
   cursor?: string;
   limit?: number;
+  /**
+   * Return only chat_message rows that have not yet been answered by this
+   * agent identity. Server-side filter used by runtime recovery.
+   */
+  unhandledBy?: string;
 }
 
 export interface MessagePage<TContent = unknown> {
@@ -333,12 +354,37 @@ export interface ListConversationsOptions {
   state?: "open" | "closed";
   limit?: number;
   cursor?: string;
+  targetIdentityId?: string;
+  targetKind?: string;
 }
 
 export interface ConversationPage {
   conversations: Conversation[];
   nextCursor?: string;
   hasMore: boolean;
+}
+
+export interface ConversationFocus {
+  owner_identity_id?: string;
+  target_identity_id?: string;
+  surface?: string;
+  conversation_id?: string;
+  metadata?: Record<string, string>;
+  updated_at?: string;
+}
+
+export interface GetConversationFocusInput {
+  ownerIdentityId: string;
+  targetIdentityId: string;
+  surface?: string;
+}
+
+export interface PutConversationFocusInput {
+  ownerIdentityId: string;
+  targetIdentityId: string;
+  surface?: string;
+  conversationId: string;
+  metadata?: Record<string, string>;
 }
 
 /**

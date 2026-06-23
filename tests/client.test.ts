@@ -128,7 +128,7 @@ describe("MessageClient REST", () => {
     expect(seenHeaders["authorization"]).toBeUndefined();
   });
 
-  it("encodes pagination cursor in querystring", async () => {
+  it("encodes message list filters in querystring", async () => {
     let seenURL = "";
     globalThis.fetch = vi.fn(async (url) => {
       seenURL = typeof url === "string" ? url : (url as URL).toString();
@@ -138,10 +138,15 @@ describe("MessageClient REST", () => {
       );
     }) as typeof fetch;
     const client = new MessageClient({ serviceUrl: "https://msg.example.com", apiKey: "k" });
-    const page = await client.messages.list("conv-1", { cursor: "opaque-cursor-1", limit: 25 });
+    const page = await client.messages.list("conv-1", {
+      cursor: "opaque-cursor-1",
+      limit: 25,
+      unhandledBy: "agent:beeos:openclaw:default",
+    });
     expect(seenURL).toContain("/api/v2/conversations/conv-1/messages");
     expect(seenURL).toContain("cursor=opaque-cursor-1");
     expect(seenURL).toContain("limit=25");
+    expect(seenURL).toContain("unhandled_by=agent%3Abeeos%3Aopenclaw%3Adefault");
     expect(page.hasMore).toBe(false);
     expect(page.messages).toEqual([]);
   });

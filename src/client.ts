@@ -54,8 +54,10 @@ import {
 } from "./sse-stream.js";
 import type {
   Conversation,
+  ConversationFocus,
   ConversationPage,
   CreateConversationInput,
+  GetConversationFocusInput,
   IdentitySendInput,
   ListConversationsOptions,
   ListOptions,
@@ -65,6 +67,7 @@ import type {
   MessagePage,
   MessageStreamOptions,
   Presence,
+  PutConversationFocusInput,
   SendInput,
   StartStreamInput,
   TokenProvider,
@@ -520,6 +523,10 @@ export class ConversationsAPI {
       participants: input.participants,
     };
     if (input.metadata) body.metadata = input.metadata;
+    if (input.ownerIdentityId) body.owner_identity_id = input.ownerIdentityId;
+    if (input.targetIdentityId) body.target_identity_id = input.targetIdentityId;
+    if (input.targetKind) body.target_kind = input.targetKind;
+    if (input.title) body.title = input.title;
     if (input.singleShot !== undefined) body.single_shot = input.singleShot;
     if (input.deadlineMs !== undefined) body.deadline_ms = input.deadlineMs;
     return this.client.request<Conversation>(
@@ -680,6 +687,7 @@ export class MessagesAPI {
     const params = new URLSearchParams();
     if (lo?.cursor) params.set("cursor", lo.cursor);
     if (lo?.limit) params.set("limit", String(lo.limit));
+    if (lo?.unhandledBy) params.set("unhandled_by", lo.unhandledBy);
     const qs = params.toString();
     const path = qs
       ? `/api/v2/conversations/${encodeURIComponent(conversationId)}/messages?${qs}`
@@ -839,6 +847,8 @@ export class IdentitiesAPI {
     if (lo?.state) params.set("state", lo.state);
     if (lo?.limit) params.set("limit", String(lo.limit));
     if (lo?.cursor) params.set("cursor", lo.cursor);
+    if (lo?.targetIdentityId) params.set("target_identity_id", lo.targetIdentityId);
+    if (lo?.targetKind) params.set("target_kind", lo.targetKind);
     const qs = params.toString();
     const path = qs
       ? `/api/v2/identities/${encodeURIComponent(identityId)}/conversations?${qs}`
@@ -853,6 +863,41 @@ export class IdentitiesAPI {
       nextCursor: raw.next_cursor,
       hasMore: raw.has_more ?? false,
     };
+  }
+
+  async getConversationFocus(
+    input: GetConversationFocusInput,
+    opts?: RequestOptions,
+  ): Promise<ConversationFocus> {
+    const params = new URLSearchParams();
+    params.set("target_identity_id", input.targetIdentityId);
+    if (input.surface) params.set("surface", input.surface);
+    return this.client.request<ConversationFocus>(
+      "GET",
+      `/api/v2/identities/${encodeURIComponent(input.ownerIdentityId)}/conversation-focus?${params.toString()}`,
+      undefined,
+      undefined,
+      opts,
+    );
+  }
+
+  async putConversationFocus(
+    input: PutConversationFocusInput,
+    opts?: RequestOptions,
+  ): Promise<ConversationFocus> {
+    const body: Record<string, unknown> = {
+      target_identity_id: input.targetIdentityId,
+      surface: input.surface ?? "chat",
+      conversation_id: input.conversationId,
+    };
+    if (input.metadata) body.metadata = input.metadata;
+    return this.client.request<ConversationFocus>(
+      "PUT",
+      `/api/v2/identities/${encodeURIComponent(input.ownerIdentityId)}/conversation-focus`,
+      body,
+      undefined,
+      opts,
+    );
   }
 }
 
@@ -1023,5 +1068,13 @@ function snakeMessageToCamel<TContent>(raw: Record<string, unknown>): Message<TC
     sender: String(raw.sender ?? ""),
     replyTo: typeof raw.reply_to === "string" ? raw.reply_to : undefined,
     createdAt: String(raw.created_at ?? ""),
+    updatedAt: typeof raw.updated_at === "string" ? raw.updated_at : undefined,
+    body: typeof raw.body === "string" ? raw.body : undefined,
+    parts: Array.isArray(raw.parts) ? (raw.parts as Message<TContent>["parts"]) : undefined,
+    state: typeof raw.state === "string" ? (raw.state as Message<TContent>["state"]) : undefined,
+    stopReason:
+      typeof raw.stop_reason === "string"
+        ? (raw.stop_reason as Message<TContent>["stopReason"])
+        : undefined,
   };
 }
