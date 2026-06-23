@@ -331,6 +331,11 @@ export interface WaitInput {
 export interface ListOptions {
   cursor?: string;
   limit?: number;
+  /**
+   * Return only chat_message rows that have not yet been answered by this
+   * agent identity. Server-side filter used by runtime recovery.
+   */
+  unhandledBy?: string;
 }
 
 export interface MessagePage<TContent = unknown> {

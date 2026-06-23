@@ -687,6 +687,7 @@ export class MessagesAPI {
     const params = new URLSearchParams();
     if (lo?.cursor) params.set("cursor", lo.cursor);
     if (lo?.limit) params.set("limit", String(lo.limit));
+    if (lo?.unhandledBy) params.set("unhandled_by", lo.unhandledBy);
     const qs = params.toString();
     const path = qs
       ? `/api/v2/conversations/${encodeURIComponent(conversationId)}/messages?${qs}`
