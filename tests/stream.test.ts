@@ -524,6 +524,59 @@ describe("MessageStream — v3 envelope flow", () => {
     expect(errors[0].status).toBe(410);
   });
 
+  // After the internal single retry is exhausted, the stream must NOT
+  // stay locally terminated — otherwise callers cannot fall back to
+  // fail()/cancel() and MS rows remain state="streaming" forever.
+  it("terminal PATCH exhaustion resets isTerminated so cancel() can land", async () => {
+    const initial = {
+      id: "msg-term-retry-reset",
+      conversation_id: "conv-1",
+      type: "agent_reply",
+      sender: "agent:c",
+      body: "",
+      state: "streaming",
+      created_at: "2026-05-20T00:00:00Z",
+    };
+    let patchCount = 0;
+    const { fetch: f } = captureFetch((req) => {
+      if (req.method === "POST") return { status: 201, body: initial };
+      patchCount++;
+      // First finalize attempt: both tries 5xx. Subsequent cancel: succeed.
+      if (patchCount <= 2) {
+        return { status: 503, body: { error: { code: "service_unavailable" } } };
+      }
+      return {
+        status: 200,
+        body: {
+          ...initial,
+          body: "partial",
+          state: "cancelled",
+          stop_reason: "user_stop",
+          parts: [{ type: "tool_use", id: "t1", name: "web_search", state: "done" }],
+        },
+      };
+    });
+    globalThis.fetch = f;
+
+    const client = makeClient();
+    const stream = await client.messages.startStream({
+      conversationId: "conv-1",
+      id: "msg-term-retry-reset",
+    });
+    stream.appendBody("partial");
+    stream.appendToolUse("t1", "web_search", { q: "x" }, "done");
+
+    await expect(stream.finalize({ stopReason: "end_turn" })).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(stream.isTerminated).toBe(false);
+
+    const cancelled = await stream.cancel({ stopReason: "user_stop" });
+    expect(cancelled.state).toBe("cancelled");
+    expect(stream.isTerminated).toBe(true);
+    expect(patchCount).toBe(3);
+  });
+
   it("getEnvelope returns the camelCase v3 snapshot", async () => {
     const { fetch: f } = captureFetch(() => ({
       status: 200,

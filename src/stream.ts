@@ -516,26 +516,39 @@ export class MessageStream {
     if (this.terminated) {
       return this.initialEnvelope ?? this.localSnapshot();
     }
+    // Mark terminated up-front so midstream mutators cannot race the
+    // terminal PATCH. If the PATCH (and its single retry) still fails,
+    // reset so the caller can attempt fail()/cancel()/finalize() again
+    // — otherwise the local flag stays true while MS remains
+    // state="streaming" forever (ADR-0023 stuck-envelope hole).
     this.terminated = true;
     // The terminal write ships the full cumulative body (snapshot
     // replace), so drop any queued append — it is already covered.
     this.pendingBody = "";
     this.snapshotPending = false;
 
-    this.chain = this.chain.then(async () => {
-      if (this.openState === "failed") {
-        await this.sendV3Fallback(state, stopReason);
-      } else {
-        const patch: Record<string, unknown> = { state };
-        if (stopReason) patch.stop_reason = stopReason;
-        patch.body = this.body;
-        if (this.parts.length > 0) patch.parts = this.parts;
-        await this.patchSnapshotWithTerminalRetry(patch);
-      }
-      this.state = state;
-      this.stopReason = stopReason;
-    });
-    await this.chain;
+    try {
+      this.chain = this.chain.then(async () => {
+        if (this.openState === "failed") {
+          await this.sendV3Fallback(state, stopReason);
+        } else {
+          const patch: Record<string, unknown> = { state };
+          if (stopReason) patch.stop_reason = stopReason;
+          patch.body = this.body;
+          if (this.parts.length > 0) patch.parts = this.parts;
+          await this.patchSnapshotWithTerminalRetry(patch);
+        }
+        this.state = state;
+        this.stopReason = stopReason;
+      });
+      await this.chain;
+    } catch (err) {
+      this.terminated = false;
+      // Re-anchor the write chain so a caller retry of finalize/fail/cancel
+      // is not poisoned by this rejected terminal attempt.
+      this.chain = Promise.resolve();
+      throw err;
+    }
     return this.initialEnvelope
       ? { ...this.initialEnvelope, ...this.localSnapshot() }
       : this.localSnapshot();
