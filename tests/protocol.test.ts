@@ -30,7 +30,12 @@ function messageCreated(sequence = "1"): RealtimeEventV1<"message.created"> {
         id: "message-1",
         conversationId: "conversation-1",
         senderId: "user-1",
+        type: "chat_message",
         body: "hello",
+        state: "completed",
+        createdAt: "2026-07-28T00:00:00.000Z",
+        updatedAt: "2026-07-28T00:00:00.000Z",
+        historyGeneration: "1",
       },
     },
   };
@@ -64,6 +69,51 @@ describe("RealtimeEventV1 protocol", () => {
     const malformed = messageCreated() as unknown as { scope: Record<string, unknown> };
     delete malformed.scope.messageId;
     expect(() => decodeRealtimeEvent(malformed)).toThrow(RealtimeEventValidationError);
+  });
+
+  it("requires delta offset and a stable message identity", () => {
+    const malformed = messageDelta("2") as unknown as {
+      data: { bodyFrom?: number; message: { conversationId?: string } };
+    };
+    delete malformed.data.bodyFrom;
+    expect(() => decodeRealtimeEvent(malformed)).toThrow(RealtimeEventValidationError);
+
+    const wrongConversation = messageDelta("2") as unknown as {
+      data: { message: { conversationId: string } };
+    };
+    wrongConversation.data.message.conversationId = "other-conversation";
+    expect(() => decodeRealtimeEvent(wrongConversation)).toThrow(RealtimeEventValidationError);
+  });
+
+  it("requires snapshots for durable conversation and operation events", () => {
+    const conversation = {
+      ...messageCreated(),
+      eventId: "conversation-1",
+      type: "conversation.updated" as const,
+      scope: { tenantId: "tenant-1", conversationId: "conversation-1" },
+      data: {
+        conversation: {
+          id: "conversation-1",
+          state: "open" as const,
+          metadataVersion: "3",
+          historyGeneration: "1",
+          lastActivityAt: "2026-07-28T00:00:00.000Z",
+          updatedAt: "2026-07-28T00:00:00.000Z",
+        },
+      },
+    };
+    expect(() => decodeRealtimeEvent(conversation)).not.toThrow();
+
+    const operation = {
+      ...messageCreated(),
+      eventId: "operation-1",
+      type: "operation.terminal" as const,
+      scope: { tenantId: "tenant-1", operationId: "operation-1" },
+      data: {
+        operation: { id: "operation-1", method: "instance.start", state: "completed" },
+      },
+    };
+    expect(() => decodeRealtimeEvent(operation)).not.toThrow();
   });
 
   it("deduplicates the WSS message.created echo after the HTTP create", () => {

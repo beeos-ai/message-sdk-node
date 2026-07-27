@@ -22,7 +22,12 @@ function created(sequence = "1"): AnyRealtimeEventV1 {
         id: "message-1",
         conversationId: "conversation-1",
         senderId: "user-1",
+        type: "chat_message",
         body: "hello",
+        state: "completed",
+        createdAt: "2026-07-28T00:00:00.000Z",
+        updatedAt: "2026-07-28T00:00:00.000Z",
+        historyGeneration: "1",
       },
     },
   };

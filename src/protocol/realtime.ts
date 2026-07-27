@@ -68,24 +68,43 @@ export interface RealtimeCorrelation {
   idempotencyKeyHash?: string;
 }
 
-export interface RealtimeMessage {
+/** Immutable identity used by delta events, where the full snapshot is not repeated. */
+export interface RealtimeMessageIdentity {
   id: string;
   conversationId: string;
   senderId: string;
-  body?: string;
-  state?: "streaming" | "completed" | "failed" | "refused" | "cancelled";
+}
+
+/** Durable v3 message projection. Never contains a realtime transport token. */
+export interface RealtimeMessage extends RealtimeMessageIdentity {
+  type: string;
+  replyTo?: string;
+  body: string;
+  parts?: JsonValue;
+  state: "streaming" | "completed" | "failed" | "refused" | "cancelled";
+  stopReason?: string;
   content?: JsonValue;
+  createdAt: string;
+  updatedAt: string;
+  /** Decimal string; a generation change requires projection rebase. */
+  historyGeneration: string;
 }
 
 export interface RealtimeConversation {
   id: string;
   title?: string;
-  state?: "open" | "closed";
+  state: "open" | "closed";
+  metadataVersion: string;
+  historyGeneration: string;
+  lastMessageId?: string;
+  lastActivityAt: string;
+  updatedAt: string;
 }
 
 export interface RealtimeMember {
   identityId: string;
-  role?: string;
+  role: string;
+  joinedAt: string;
 }
 
 export interface RealtimeOperation {
@@ -98,9 +117,9 @@ export interface RealtimeOperation {
 
 export interface RealtimeEventDataMap {
   "message.created": { message: RealtimeMessage };
-  "message.delta": { bodyAppend?: string; bodyFrom?: number; message: RealtimeMessage };
+  "message.delta": { message: RealtimeMessageIdentity; bodyAppend: string; bodyFrom: number; parts?: JsonValue };
   "message.updated": { message: RealtimeMessage };
-  "message.terminal": { message: RealtimeMessage; stopReason?: string };
+  "message.terminal": { message: RealtimeMessage };
   "message.deleted": { messageId: string };
   "conversation.created": { conversation: RealtimeConversation };
   "conversation.updated": { conversation: RealtimeConversation };
@@ -110,7 +129,7 @@ export interface RealtimeEventDataMap {
   "conversation.read.updated": { identityId: string; lastReadMessageId?: string };
   "conversation.unread.updated": { identityId: string; unreadCount: number };
   "instance.updated": { instanceId: string; status: string };
-  "agent.updated": { agentId: string; status: string };
+  "agent.updated": { agentId: string; status: string; revision: string };
   "operation.started": { operation: RealtimeOperation };
   "operation.progress": { operation: RealtimeOperation; progress?: number };
   "operation.terminal": { operation: RealtimeOperation };
@@ -152,35 +171,90 @@ function hasString(record: Record<string, unknown>, key: string): boolean {
   return typeof record[key] === "string" && (record[key] as string).length > 0;
 }
 
+function isDecimalString(value: unknown): value is string {
+  return typeof value === "string" && /^\d+$/.test(value);
+}
+
+function isRFC3339(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number") return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return isRecord(value) && Object.values(value).every(isJsonValue);
+}
+
+function isMessageIdentity(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && hasString(value, "id") && hasString(value, "conversationId") && hasString(value, "senderId");
+}
+
+function isMessageSnapshot(value: unknown): value is Record<string, unknown> {
+  if (!isMessageIdentity(value)) return false;
+  if (!hasString(value, "type") || typeof value.body !== "string") return false;
+  if (!["streaming", "completed", "failed", "refused", "cancelled"].includes(String(value.state))) return false;
+  if (!isRFC3339(value.createdAt) || !isRFC3339(value.updatedAt) || !isDecimalString(value.historyGeneration)) return false;
+  return (value.replyTo === undefined || typeof value.replyTo === "string")
+    && (value.stopReason === undefined || typeof value.stopReason === "string")
+    && (value.content === undefined || isJsonValue(value.content))
+    && (value.parts === undefined || isJsonValue(value.parts));
+}
+
+function isConversationSnapshot(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value) || !hasString(value, "id")) return false;
+  if (!["open", "closed"].includes(String(value.state))) return false;
+  if (!isDecimalString(value.metadataVersion) || !isDecimalString(value.historyGeneration)) return false;
+  if (!isRFC3339(value.lastActivityAt) || !isRFC3339(value.updatedAt)) return false;
+  return (value.title === undefined || typeof value.title === "string")
+    && (value.lastMessageId === undefined || typeof value.lastMessageId === "string");
+}
+
+function isMemberSnapshot(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && hasString(value, "identityId") && hasString(value, "role") && isRFC3339(value.joinedAt);
+}
+
+function isOperationSnapshot(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value) || !hasString(value, "id") || !hasString(value, "method")) return false;
+  if (!["started", "running", "completed", "failed", "cancelled", "outcome_unknown"].includes(String(value.state))) return false;
+  return (value.result === undefined || isJsonValue(value.result))
+    && (value.errorCode === undefined || typeof value.errorCode === "string");
+}
+
 function hasDataForType(type: RealtimeEventType, scope: Record<string, unknown>, data: Record<string, unknown>): boolean {
   switch (type) {
     case "message.created":
-    case "message.delta":
     case "message.updated":
     case "message.terminal":
-      return hasString(scope, "conversationId") && hasString(scope, "messageId") && isRecord(data.message);
+      return hasString(scope, "conversationId") && hasString(scope, "messageId") && isMessageSnapshot(data.message)
+        && data.message.id === scope.messageId && data.message.conversationId === scope.conversationId;
+    case "message.delta":
+      return hasString(scope, "conversationId") && hasString(scope, "messageId") && isMessageIdentity(data.message)
+        && data.message.id === scope.messageId && data.message.conversationId === scope.conversationId
+        && typeof data.bodyAppend === "string" && Number.isSafeInteger(data.bodyFrom) && (data.bodyFrom as number) >= 0
+        && (data.parts === undefined || isJsonValue(data.parts));
     case "message.deleted":
-      return hasString(scope, "conversationId") && hasString(scope, "messageId") && hasString(data, "messageId");
+      return hasString(scope, "conversationId") && hasString(scope, "messageId") && data.messageId === scope.messageId;
     case "conversation.created":
     case "conversation.updated":
-      return hasString(scope, "conversationId") && isRecord(data.conversation);
+      return hasString(scope, "conversationId") && isConversationSnapshot(data.conversation) && data.conversation.id === scope.conversationId;
     case "conversation.deleted":
-      return hasString(scope, "conversationId") && hasString(data, "conversationId");
+      return hasString(scope, "conversationId") && data.conversationId === scope.conversationId;
     case "conversation.member.added":
     case "conversation.member.removed":
-      return hasString(scope, "conversationId") && isRecord(data.member) && hasString(data.member, "identityId");
+      return hasString(scope, "conversationId") && isMemberSnapshot(data.member);
     case "conversation.read.updated":
       return hasString(scope, "conversationId") && hasString(data, "identityId");
     case "conversation.unread.updated":
-      return hasString(scope, "conversationId") && hasString(data, "identityId") && typeof data.unreadCount === "number";
+      return hasString(scope, "conversationId") && hasString(data, "identityId") && Number.isSafeInteger(data.unreadCount) && (data.unreadCount as number) >= 0;
     case "instance.updated":
       return hasString(scope, "instanceId") && hasString(data, "instanceId") && hasString(data, "status");
     case "agent.updated":
-      return hasString(scope, "agentId") && hasString(data, "agentId") && hasString(data, "status");
+      return hasString(scope, "agentId") && data.agentId === scope.agentId && hasString(data, "status") && isDecimalString(data.revision);
     case "operation.started":
     case "operation.progress":
     case "operation.terminal":
-      return hasString(scope, "operationId") && isRecord(data.operation) && hasString(data.operation, "id") && hasString(data.operation, "method") && hasString(data.operation, "state");
+      return hasString(scope, "operationId") && isOperationSnapshot(data.operation) && data.operation.id === scope.operationId
+        && (type !== "operation.progress" || data.progress === undefined || (Number.isSafeInteger(data.progress) && (data.progress as number) >= 0 && (data.progress as number) <= 100));
     case "typing.started":
     case "typing.stopped":
       return hasString(scope, "conversationId") && hasString(data, "identityId");
