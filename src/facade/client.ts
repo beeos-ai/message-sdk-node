@@ -53,6 +53,7 @@ export class MessageClientFacade {
   private readonly cursorKey: string;
   private nextListenerId = 1;
   private cursor?: RealtimeCursor;
+  private syncCursor?: string;
   private connection: RealtimeConnectionState = "disconnected";
   private session?: RealtimeSession;
   private connectPromise?: Promise<void>;
@@ -90,6 +91,7 @@ export class MessageClientFacade {
         onEvent: (event) => this.handleInbound(event),
         onState: (state) => this.handleRealtimeState(state),
       });
+      this.syncCursor = this.session.syncCursor ?? this.syncCursor;
       this.setConnection("connected");
     })().finally(() => {
       this.connectPromise = undefined;
@@ -199,10 +201,11 @@ export class MessageClientFacade {
     const run = (async () => {
       try {
         const rebase = await this.hydration.hydrate("realtime:rebase", () =>
-          this.options.transport.rebase({ cursor: this.cursor, reason }),
+          this.options.transport.rebase({ cursor: this.cursor, syncCursor: this.syncCursor, reason }),
         );
         for (const event of rebase.events) this.applyEvent(event, true);
         if (rebase.cursor) await this.setCursor(rebase.cursor);
+        this.syncCursor = rebase.syncCursor ?? this.syncCursor;
       } finally {
         release();
       }

@@ -13,6 +13,15 @@ export type {
   MessageClientOptions,
   RequestOptions,
 } from "./client.js";
-export { createMessageClient, MessageClientFacade } from "./facade/index.js";
+export {
+  createCentrifugoRealtimeTransport,
+  createMessageClient,
+  CentrifugoRealtimeTransport,
+  MessageClientFacade,
+} from "./facade/index.js";
+export {
+  createNodeCentrifugeClientFactory,
+  createNodeCentrifugoRealtimeTransport,
+} from "./facade/centrifugo-node.js";
 export type * from "./facade/index.js";
 export * from "./protocol/index.js";

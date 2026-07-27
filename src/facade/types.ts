@@ -67,15 +67,25 @@ export interface ConversationHydration {
 
 export interface RebaseInput {
   cursor?: RealtimeCursor;
+  /**
+   * Opaque, identity-bound recovery cursor issued by Message Service.
+   * It is intentionally distinct from an event stream sequence and is never
+   * exposed as a Centrifugo channel or accepted from application code.
+   */
+  syncCursor?: string;
   reason: "sequence_gap" | "history_generation_changed" | "projection_epoch_changed";
 }
 
 export interface RealtimeRebase {
   cursor?: RealtimeCursor;
+  /** Replacement opaque cursor returned by GET /api/v2/sync. */
+  syncCursor?: string;
   events: AnyRealtimeEventV1[];
 }
 
 export interface RealtimeSession {
+  /** Internal opaque recovery cursor. It is not a realtime event sequence. */
+  readonly syncCursor?: string;
   close(): Promise<void> | void;
 }
 
@@ -85,7 +95,15 @@ export interface RealtimeConnectInput {
   onState(state: RealtimeConnectionState): void;
 }
 
-export type RealtimeConnectionState = "connected" | "disconnected" | "reconnecting";
+/**
+ * Transport lifecycle reported by the SDK-owned realtime adapter.
+ *
+ * `failed` is terminal for the current transport session. It is deliberately
+ * distinct from `reconnecting`: a transport implementation may reconnect its
+ * one physical WSS itself, but it must not silently replace realtime with a
+ * different protocol or route.
+ */
+export type RealtimeConnectionState = "connecting" | "connected" | "disconnected" | "reconnecting" | "failed";
 
 /** The realtime adapter owns the physical WSS implementation and token flow. */
 export interface RealtimeTransportPort {

@@ -1,4 +1,8 @@
 export { createMessageClient, MessageClientFacade } from "./client.js";
+export {
+  createCentrifugoRealtimeTransport,
+  CentrifugoRealtimeTransport,
+} from "./centrifugo-realtime.js";
 export type {
   AppStatePort,
   ConversationHydration,
@@ -22,3 +26,10 @@ export type {
   SendMessageInput,
   SendMessageResult,
 } from "./types.js";
+export type {
+  CentrifugeClient,
+  CentrifugeClientFactory,
+  CentrifugeClientOptions,
+  CentrifugoRealtimeTransportOptions,
+  RealtimeAuthProvider,
+} from "./centrifugo-realtime.js";
