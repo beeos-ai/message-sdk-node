@@ -33,19 +33,17 @@
  *      `appendToolUse` / `appendToolResult` immediately — writes are
  *      enqueued and dispatched after the open POST resolves.
  *   3. `finalize/fail/refuse/cancel` block until the terminal write
- *      lands. If the open POST FAILED, the terminal call falls back
- *      to a single-shot `sendV3` POST (different id, same replyTo)
- *      so consumers still see a terminal envelope row instead of an
- *      indefinite "still streaming" gap.
+ *      lands. If the open or terminal write has an indeterminate
+ *      transport outcome, the SDK throws `OutcomeUnknownError`; it never
+ *      creates a second message or a second UUID. The caller reconciles
+ *      explicitly with the original idempotency key.
  *
  * Concurrency model: a MessageStream is single-writer. The SDK
  * serializes the PATCH chain so the server sees writes in append
  * order even when the caller's appends are interleaved with awaits.
  */
 
-import { randomUUID } from "node:crypto";
-
-import { MessagingError } from "./errors.js";
+import { MessagingError, OutcomeUnknownError } from "./errors.js";
 import type {
   MessageEnvelope,
   MessageState,
@@ -73,16 +71,6 @@ export interface RequestOptions {
   sender?: string;
   timeoutMs?: number;
 }
-
-/**
- * Fixed retry delay for the terminal PATCH. Sized for same-DC
- * Message Service deployments where round-trip is ~10ms — a single
- * 200ms retry covers ~99% of transient blips without dragging the
- * finalize() critical path. We deliberately do NOT do exponential
- * backoff: if 200ms isn't enough, MS is genuinely unreachable and
- * more retries just delay the caller's error handling.
- */
-const TERMINAL_RETRY_DELAY_MS = 200;
 
 /**
  * StopReason values that map cleanly onto v3 `state="completed"`.
@@ -116,21 +104,20 @@ const KNOWN_COMPLETED_STOP_REASONS: ReadonlySet<StopReason> =
  *      `body_append` PATCHes on the next chain step (back-pressure
  *      coalescing, no timer).
  *   3. POST rejects → `openState="failed"`; future PATCHes no-op;
- *      `finalize/fail/refuse/cancel` falls back to a single-shot
- *      `sendV3` POST with terminal state preset.
+ *      `finalize/fail/refuse/cancel` returns a definitive HTTP error or
+ *      throws `OutcomeUnknownError` for an indeterminate open outcome.
  *   4. After any terminal call, further appends throw `StreamTerminatedError`.
  */
 export class MessageStream {
   private readonly transport: MessageStreamTransport;
   private readonly reqOpts?: RequestOptions;
   private readonly conversationId: string;
-  /** Pinned StartStream input — reused by the open-failure sendV3 fallback. */
+  /** Pinned StartStream input for stable local snapshots and reconciliation. */
   private readonly input: StartStreamInput;
   /**
-   * Stable UUID. Populated synchronously from `input.id`; refreshed
-   * from the POST response on success (typically equal). On open
-   * failure + sendV3 fallback the id is updated to the new row's id
-   * so `stream.id` always reflects what's actually in MS.
+   * Stable caller id. Populated synchronously from `input.id`; refreshed
+   * from the POST response on success (typically equal). It is never
+   * replaced after an indeterminate failure.
    */
   private messageId: string;
 
@@ -215,12 +202,8 @@ export class MessageStream {
       (err) => {
         this.openState = "failed";
         this.openError = err instanceof Error ? err : new Error(String(err));
-        // Absorb the rejection so the chain stays usable. The
-        // terminate() path inspects openState and falls back to
-        // sendV3. We deliberately do NOT call onError here for the
-        // open-POST failure — the SDK's contract is that onError
-        // fires on PATCH failures; the open-POST result is surfaced
-        // via `await stream.opened()` for callers that care.
+        // Absorb the rejection so terminate() can surface either a
+        // definitive rejection or OutcomeUnknownError from one place.
       },
     );
   }
@@ -435,8 +418,8 @@ export class MessageStream {
 
   private async drainOnce(): Promise<void> {
     if (this.terminated) return;
-    // Open POST never landed → no row to PATCH. Pending writes stay in
-    // memory and ride out on the terminal sendV3 fallback.
+    // Open POST did not produce a confirmed row, so there is nothing safe
+    // to PATCH. A terminal call reports the original outcome as unknown.
     if (this.openState !== "open") return;
 
     // Full-body snapshot replace (setBody) takes precedence — it makes
@@ -524,7 +507,14 @@ export class MessageStream {
 
     this.chain = this.chain.then(async () => {
       if (this.openState === "failed") {
-        await this.sendV3Fallback(state, stopReason);
+        const error = this.openError ?? new Error("message stream open failed");
+        if (isNonRetryable4xx(error)) {
+          this.notifyError(error, "terminal");
+          throw error;
+        }
+        const outcome = this.outcomeUnknown("open", error);
+        this.notifyError(outcome, "terminal");
+        throw outcome;
       } else {
         const patch: Record<string, unknown> = { state };
         if (stopReason) patch.stop_reason = stopReason;
@@ -541,53 +531,6 @@ export class MessageStream {
       : this.localSnapshot();
   }
 
-  /**
-   * Single-shot fallback when the open POST failed. Posts a NEW v3
-   * envelope with terminal state pre-applied so consumers see a
-   * terminal row even though the streaming row never existed.
-   *
-   * Trade-offs:
-   *   - The fallback row uses a fresh UUID rather than the original
-   *     `input.id`. This avoids races against any partial server
-   *     state the failed POST may have created. `stream.id` is
-   *     updated to the new id so callers reading it post-terminate
-   *     see what's actually in MS.
-   *   - Failure of the fallback itself is reported via
-   *     `onError("terminal")` but does NOT re-throw. Beeos-claw
-   *     parity: a terminal-write failure is observability-only; the
-   *     awaiting `finalize/fail/...` caller's logic should not branch
-   *     on whether the fallback row landed (in practice the server-
-   *     side stale-streaming reaper handles the gap).
-   */
-  private async sendV3Fallback(
-    state: MessageState,
-    stopReason: StopReason,
-  ): Promise<void> {
-    const newId = randomUUID();
-    try {
-      const env = await postStreamingEnvelope(
-        this.transport,
-        {
-          conversationId: this.conversationId,
-          id: newId,
-          type: this.input.type ?? "agent_reply",
-          replyTo: this.input.replyTo,
-          body: this.body,
-          parts: this.parts.length > 0 ? this.parts : undefined,
-          state,
-          stopReason,
-        },
-        this.reqOpts,
-      );
-      this.initialEnvelope = env;
-      if (env.id) this.messageId = env.id;
-    } catch (err) {
-      const e = err instanceof Error ? err : new Error(String(err));
-      this.notifyError(e, "terminal");
-      // Intentionally NOT re-thrown — fallback failure is warn-only.
-    }
-  }
-
   private async patchSnapshot(patch: Record<string, unknown>): Promise<void> {
     const raw = await this.transport.request<Record<string, unknown>>(
       "PATCH",
@@ -602,31 +545,31 @@ export class MessageStream {
   }
 
   /**
-   * Terminal PATCH wrapper with a single short-delay retry. Protects
-   * against the only failure mode that v3 snapshot semantics cannot
-   * self-heal: if the terminal PATCH never lands, the row stays in
-   * state="streaming" forever and downstream consumers (SSE, wait)
-   * never see the stream end.
+   * Terminal writes are never retried automatically. A transport failure may
+   * have committed server-side; returning OutcomeUnknownError preserves the
+   * original idempotency key for explicit GET/reconcile by the caller.
    */
   private async patchSnapshotWithTerminalRetry(patch: Record<string, unknown>): Promise<void> {
     try {
       await this.patchSnapshot(patch);
-      return;
     } catch (err) {
       const e = err instanceof Error ? err : new Error(String(err));
-      if (isNonRetryable4xx(e)) {
-        this.notifyError(e, "terminal");
-        throw e;
-      }
-      await sleep(TERMINAL_RETRY_DELAY_MS);
-      try {
-        await this.patchSnapshot(patch);
-      } catch (retryErr) {
-        const re = retryErr instanceof Error ? retryErr : new Error(String(retryErr));
-        this.notifyError(re, "terminal");
-        throw re;
-      }
+      const terminalError = isNonRetryable4xx(e)
+        ? e
+        : this.outcomeUnknown("terminal", e);
+      this.notifyError(terminalError, "terminal");
+      throw terminalError;
     }
+  }
+
+  private outcomeUnknown(phase: "open" | "terminal", cause: Error): OutcomeUnknownError {
+    return new OutcomeUnknownError({
+      phase,
+      conversationId: this.conversationId,
+      messageId: this.messageId || undefined,
+      idempotencyKey: this.input.id,
+      cause,
+    });
   }
 
   /**
@@ -668,10 +611,6 @@ function isNonRetryable4xx(err: Error): boolean {
     return err.status >= 400 && err.status < 500;
   }
   return false;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -735,7 +674,7 @@ export function rawToEnvelope(raw: Record<string, unknown>): MessageEnvelope {
 
 /**
  * @internal — POST helper used by client.messages.startStream /
- * sendV3 / MessageStream.sendV3Fallback.
+ * sendV3.
  */
 export async function postStreamingEnvelope(
   transport: MessageStreamTransport,

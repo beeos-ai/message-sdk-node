@@ -732,9 +732,10 @@ export class MessagesAPI {
    *   s.appendBody("world");           // → body_append PATCH (or coalesced)
    *   await s.finalize({ stopReason: "end_turn" });
    *
-   * If the open POST fails (network / 5xx / 4xx), the terminal call
-   * automatically falls back to a single-shot `sendV3` POST so
-   * consumers still see a terminal envelope row.
+   * If the open POST or terminal PATCH has an indeterminate outcome,
+   * the terminal call throws `OutcomeUnknownError`. It never creates a
+   * second row; callers reconcile explicitly with the original idempotency
+   * key before deciding whether to retry.
    *
    * `input.id` is RECOMMENDED — when present it's forwarded as the
    * `Idempotency-Key` HTTP header and used as the local `stream.id`.
@@ -754,10 +755,8 @@ export class MessagesAPI {
 
   /**
    * Post a v3 envelope in a single shot — terminal state goes in on
-   * the very first POST, no subsequent PATCHes. Useful as a fallback
-   * when the streaming open POST failed transiently (plan 1.5) and
-   * the caller wants to land SOMETHING in MS so polls / SSE replays
-   * see a terminal row.
+   * the very first POST, no subsequent PATCHes. This is an explicit
+   * caller operation, never an automatic stream fallback.
    *
    * Functionally equivalent to `startStream(input)` followed by
    * `setBody(input.body) + finalize({ stop_reason })`, but with a

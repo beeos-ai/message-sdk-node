@@ -57,6 +57,31 @@ export class WaitTimeoutError extends MessagingError {
 }
 
 /**
+ * The server may have accepted a request even though the caller did not
+ * receive a definitive response. This is intentionally not retried by the
+ * SDK: callers must reconcile using the same idempotency key/message id.
+ */
+export class OutcomeUnknownError extends Error {
+  readonly code = "outcome_unknown";
+
+  constructor(
+    readonly details: {
+      phase: "open" | "terminal";
+      conversationId: string;
+      messageId?: string;
+      idempotencyKey?: string;
+      cause: Error;
+    },
+  ) {
+    super(
+      `message stream ${details.phase} outcome is unknown; reconcile with the original idempotency key`,
+    );
+    this.name = "OutcomeUnknownError";
+    this.cause = details.cause;
+  }
+}
+
+/**
  * Maps an HTTP response into the most specific MessagingError subtype.
  * The server uses two error envelopes:
  *  - `{"error":{"code","message"}}` for structured errors

@@ -96,4 +96,8 @@ export {
   NoSubscriberError,
   NotMemberError,
   WaitTimeoutError,
+  OutcomeUnknownError,
 } from "./errors.js";
+
+export * from "./protocol/index.js";
+export * from "./facade/index.js";

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { MessageClient, StreamTerminatedError } from "../src/index.js";
+import {
+  MessageClient,
+  OutcomeUnknownError,
+  StreamTerminatedError,
+} from "../src/index.js";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
@@ -413,16 +417,10 @@ describe("MessageStream — v3 envelope flow", () => {
     expect(patches.length).toBeGreaterThanOrEqual(2);
   });
 
-  // PR2: terminal PATCH retries exactly once after a 200ms delay when
-  // the first attempt fails with a retryable (non-4xx) error. The
-  // caller's finalize() resolves on the retry's success.
-  //
-  // Contract: when retry RESCUES the stream, onError MUST NOT fire —
-  // the stream ended cleanly from the caller's perspective and the
-  // observer signal is reserved for genuine terminal failures. This
-  // keeps logger.warn / metric.failure wirings on phase="terminal"
-  // free of false positives from transient 5xx blips.
-  it("PR2: terminal PATCH retries once on 5xx and resolves on retry success WITHOUT firing onError", async () => {
+  // An automatic terminal retry can duplicate a commit when the first
+  // response was lost. The SDK reports a typed unknown outcome instead;
+  // the caller must reconcile with the original idempotency key.
+  it("terminal PATCH 5xx is outcome_unknown and is not retried", async () => {
     const initial = {
       id: "msg-pr2-term-ok",
       conversation_id: "conv-1",
@@ -436,14 +434,7 @@ describe("MessageStream — v3 envelope flow", () => {
     const { fetch: f, calls } = captureFetch((req) => {
       if (req.method === "POST") return { status: 201, body: initial };
       patchCount++;
-      // First terminal PATCH fails 5xx; the retry succeeds.
-      if (patchCount === 1) {
-        return { status: 503, body: { error: { code: "service_unavailable" } } };
-      }
-      return {
-        status: 200,
-        body: { ...initial, body: "done", state: "completed", stop_reason: "end_turn" },
-      };
+      return { status: 503, body: { error: { code: "service_unavailable" } } };
     });
     globalThis.fetch = f;
 
@@ -459,19 +450,11 @@ describe("MessageStream — v3 envelope flow", () => {
       },
     );
 
-    const start = Date.now();
-    const final = await stream.finalize({ stopReason: "end_turn" });
-    const elapsed = Date.now() - start;
-
-    expect(final.state).toBe("completed");
-    // Retry rescued the stream → onError("terminal") MUST NOT fire.
-    // Observers tied to logger.warn / failure metrics should not see
-    // transient retry-recovered blips as incidents.
-    expect(errors.filter((e) => e.phase === "terminal")).toHaveLength(0);
-    // Sanity: terminal PATCH counted twice (initial + retry).
-    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(2);
-    // The 200ms retry delay must have actually elapsed.
-    expect(elapsed).toBeGreaterThanOrEqual(150);
+    await expect(stream.finalize({ stopReason: "end_turn" })).rejects.toBeInstanceOf(
+      OutcomeUnknownError,
+    );
+    expect(errors.filter((e) => e.phase === "terminal")).toHaveLength(1);
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(1);
   });
 
   // PR2: 4xx errors from terminal PATCH (channel closed, ACL denied,
@@ -629,159 +612,81 @@ describe("MessageStream — sync construct + opening queue (sink plan)", () => {
   });
 });
 
-describe("MessageStream — open-failure fallback to sendV3 (sink plan)", () => {
-  function makeOpenFailFetch(
-    onFallbackPost?: (req: RecordedRequest) => { status: number; body: unknown },
-  ): { fetch: typeof fetch; calls: RecordedRequest[] } {
-    let postCount = 0;
+describe("MessageStream — indeterminate outcomes never create a fallback row", () => {
+  function makeOpenFailFetch(): { fetch: typeof fetch; calls: RecordedRequest[] } {
     return captureFetch((req) => {
-      if (req.method === "POST") {
-        postCount++;
-        if (postCount === 1) {
-          // First POST = open. Fail it.
-          return {
-            status: 503,
-            body: { error: { code: "service_unavailable", message: "boom" } },
-          };
-        }
-        // Second POST = sendV3 fallback. Caller can customize.
-        return (
-          onFallbackPost?.(req) ?? {
-            status: 201,
-            body: {
-              id: "fallback-id",
-              conversation_id: "conv-1",
-              type: "agent_reply",
-              sender: "agent:c",
-              body: (req.body as { body?: string }).body ?? "",
-              state: (req.body as { state?: string }).state ?? "completed",
-              stop_reason: (req.body as { stop_reason?: string }).stop_reason,
-              created_at: "2026-05-20T00:00:00Z",
-            },
-          }
-        );
+      if (req.method !== "POST") {
+        throw new Error(`unexpected request after open failure: ${req.method}`);
       }
-      // No PATCHes expected on the open-failure path.
-      throw new Error(`unexpected non-POST request after open failure: ${req.method}`);
+      return {
+        status: 503,
+        body: { error: { code: "service_unavailable", message: "boom" } },
+      };
     });
   }
 
-  it("finalize falls back to sendV3 with state=completed when open POST fails", async () => {
+  it("open failure returns typed outcome_unknown and retains the original id", async () => {
     const { fetch: f, calls } = makeOpenFailFetch();
     globalThis.fetch = f;
-    const client = makeClient();
-    const stream = client.messages.startStream({
+    const stream = makeClient().messages.startStream({
       conversationId: "conv-1",
       id: "open-fail-1",
       replyTo: "user-msg-0",
     });
     stream.appendBody("partial reply");
 
-    const final = await stream.finalize({ stopReason: "end_turn" });
-
-    // Exactly TWO POSTs: failed open + fallback sendV3. NO PATCHes.
-    expect(calls.filter((c) => c.method === "POST")).toHaveLength(2);
-    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(0);
-
-    // The fallback POST is the second one — carries terminal state.
-    const fallback = calls.filter((c) => c.method === "POST")[1];
-    const fbBody = fallback.body as { body?: string; state?: string; stop_reason?: string; reply_to?: string };
-    expect(fbBody.state).toBe("completed");
-    expect(fbBody.stop_reason).toBe("end_turn");
-    expect(fbBody.body).toBe("partial reply");
-    expect(fbBody.reply_to).toBe("user-msg-0");
-
-    // Stream id is updated to the fallback's id so downstream getEnvelope works.
-    expect(stream.id).toBe("fallback-id");
-    expect(final.id).toBe("fallback-id");
-  });
-
-  it("fail falls back to sendV3 with state=failed", async () => {
-    const { fetch: f, calls } = makeOpenFailFetch();
-    globalThis.fetch = f;
-    const client = makeClient();
-    const stream = client.messages.startStream({
+    let thrown: unknown;
+    try {
+      await stream.finalize({ stopReason: "end_turn" });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(OutcomeUnknownError);
+    expect((thrown as OutcomeUnknownError).details).toMatchObject({
+      phase: "open",
       conversationId: "conv-1",
-      id: "open-fail-2",
+      messageId: "open-fail-1",
+      idempotencyKey: "open-fail-1",
     });
-    await stream.fail({ body: "rate limited" });
 
-    const fallback = calls.filter((c) => c.method === "POST")[1];
-    const fbBody = fallback.body as { body?: string; state?: string; stop_reason?: string };
-    expect(fbBody.state).toBe("failed");
-    expect(fbBody.stop_reason).toBe("error");
-    expect(fbBody.body).toBe("rate limited");
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(1);
+    expect(calls.filter((call) => call.method === "PATCH")).toHaveLength(0);
+    expect(stream.id).toBe("open-fail-1");
   });
 
-  it("refuse falls back to sendV3 with state=refused", async () => {
-    const { fetch: f, calls } = makeOpenFailFetch();
+  it("terminal transport failure is outcome_unknown and is not automatically retried", async () => {
+    let patchCount = 0;
+    const { fetch: f, calls } = captureFetch((req) => {
+      if (req.method === "POST") {
+        return {
+          status: 201,
+          body: {
+            id: "terminal-unknown-1",
+            conversation_id: "conv-1",
+            type: "agent_reply",
+            sender: "agent:c",
+            body: "",
+            state: "streaming",
+            created_at: "2026-05-20T00:00:00Z",
+          },
+        };
+      }
+      patchCount++;
+      return { status: 503, body: { error: { code: "service_unavailable", message: "boom" } } };
+    });
     globalThis.fetch = f;
-    const client = makeClient();
-    const stream = client.messages.startStream({
+    const stream = makeClient().messages.startStream({
       conversationId: "conv-1",
-      id: "open-fail-3",
+      id: "terminal-unknown-1",
     });
-    await stream.refuse({ body: "I can't help with that." });
+    await stream.opened();
 
-    const fallback = calls.filter((c) => c.method === "POST")[1];
-    const fbBody = fallback.body as { body?: string; state?: string; stop_reason?: string };
-    expect(fbBody.state).toBe("refused");
-    expect(fbBody.stop_reason).toBe("refused");
-    expect(fbBody.body).toBe("I can't help with that.");
-  });
-
-  it("cancel falls back to sendV3 with state=cancelled", async () => {
-    const { fetch: f, calls } = makeOpenFailFetch();
-    globalThis.fetch = f;
-    const client = makeClient();
-    const stream = client.messages.startStream({
-      conversationId: "conv-1",
-      id: "open-fail-4",
+    await expect(stream.finalize()).rejects.toMatchObject({
+      name: "OutcomeUnknownError",
+      details: { phase: "terminal", messageId: "terminal-unknown-1" },
     });
-    await stream.cancel();
-
-    const fallback = calls.filter((c) => c.method === "POST")[1];
-    const fbBody = fallback.body as { state?: string; stop_reason?: string };
-    expect(fbBody.state).toBe("cancelled");
-    expect(fbBody.stop_reason).toBe("user_stop");
-  });
-
-  it("fallback POST failure fires onError('terminal') but does NOT re-throw", async () => {
-    const { fetch: f } = makeOpenFailFetch(() => ({
-      status: 500,
-      body: { error: { code: "internal", message: "still down" } },
-    }));
-    globalThis.fetch = f;
-    const errors: Array<{ phase: string; status?: number }> = [];
-    const client = makeClient();
-    const stream = client.messages.startStream(
-      { conversationId: "conv-1", id: "open-fail-5" },
-      {
-        onError: (err, phase) => {
-          const status = (err as { status?: number }).status;
-          errors.push({ phase, status });
-        },
-      },
-    );
-    // Beeos-claw parity: terminal fallback failure is warn-only, so
-    // finalize MUST NOT throw.
-    await expect(stream.finalize({ stopReason: "end_turn" })).resolves.not.toThrow();
-    // Observer saw exactly one terminal error.
-    expect(errors.filter((e) => e.phase === "terminal")).toHaveLength(1);
-    expect(errors[0].status).toBe(500);
-  });
-
-  it("opened() rejects when open POST fails (caller-observable error)", async () => {
-    const { fetch: f } = makeOpenFailFetch();
-    globalThis.fetch = f;
-    const client = makeClient();
-    const stream = client.messages.startStream({
-      conversationId: "conv-1",
-      id: "open-fail-6",
-    });
-    await expect(stream.opened()).rejects.toMatchObject({ status: 503 });
-    // Stream still works — finalize falls back to sendV3.
-    await stream.finalize({ stopReason: "end_turn" });
+    expect(patchCount).toBe(1);
+    expect(calls.filter((call) => call.method === "POST")).toHaveLength(1);
   });
 });
 

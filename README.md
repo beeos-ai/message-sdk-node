@@ -2,6 +2,37 @@
 
 Node.js SDK for the BeeOS Message Service.
 
+## 2.0 platform-neutral facade (vertical slice)
+
+The existing root import remains the Node-compatible `MessageClient` surface.
+New clients should import the platform entrypoint and inject HTTPS, realtime,
+storage and lifecycle ports instead of importing `ws`, Centrifuge, EventSource
+or platform APIs into UI code:
+
+```typescript
+import { createMessageClient } from "@beeos-ai/message-sdk/react-native";
+
+const client = createMessageClient({
+  transport: messageHttpsTransport,
+  realtime: oneUserRealtimeSession,
+  storage: sqliteRealtimeCursorStore,
+  appState,
+  network,
+});
+
+await client.connect();
+const stop = client.listen({ conversationIds: [conversationId] }, onEvent);
+const watch = client.conversations.watch(conversationId);
+await watch.ready;
+await client.messages.send({ conversationId, clientMessageId, type: "chat_message", content });
+await client.methods.execute({ instanceId, method, params, idempotencyKey });
+```
+
+`/web` and `/react-native` export only the platform-neutral facade and protocol;
+they do not import Node, `ws`, or Centrifuge. The injected realtime adapter owns
+one authenticated WSS session, while `listen()` only filters events locally and
+never accepts a raw channel name.
+
 **Single unified client class — `MessageClient`** — covering both REST
 (Conversations / Messages / Identities) and realtime (Centrifugo).
 Mirrors the Go SDK (`backend/sdks/message-sdk-go`).
@@ -141,15 +172,11 @@ buffer and ship on the first PATCH after open. `setBody` / `finalize`
 ship the full cumulative body as a snapshot replace; a `409
 append_offset_mismatch` self-heals by resending the whole body.
 
-**Open-failure fallback.** If the underlying POST fails (network blip,
-4xx, 5xx), the terminal call (`finalize` / `fail` / `refuse` / `cancel`)
-automatically falls back to a single-shot `sendV3` POST that creates a
-NEW envelope row with the terminal state pre-applied. `/wait` and SSE
-consumers still see a terminal frame — the open failure does not leave
-the conversation in an indefinite "still streaming" gap. Fallback
-itself failing is warn-only via the `onError("terminal")` hook (no
-re-throw), matching the at-least-once semantics of the rest of the
-streaming layer.
+**Indeterminate writes.** The SDK never creates a replacement message or a
+new UUID after an open/terminal transport failure. `finalize` / `fail` /
+`refuse` / `cancel` throw `OutcomeUnknownError` when the server may have
+accepted the original request. Reconcile by fetching with the original
+message id/idempotency key before any explicit retry.
 
 **`stopReason` whitelist.** `finalize({ stopReason })` accepts only the
 five values that map cleanly onto `state="completed"` —
