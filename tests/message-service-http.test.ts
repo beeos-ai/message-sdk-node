@@ -70,6 +70,39 @@ describe("Message Service v2 HTTPS transport", () => {
     expect(calls[0].init?.body).toBe(JSON.stringify({ type: "chat_message", content: { text: "trace" }, reply_to: "reply-1" }));
   });
 
+  it("maps approved text and optional parts to the confirmed v2 envelope fields", async () => {
+    const bodies: string[] = [];
+    const headers: Headers[] = [];
+    const client = transport((async (_url, init) => {
+      bodies.push(String(init?.body));
+      headers.push(new Headers(init?.headers));
+      return new Response(JSON.stringify({ id: "text-message-1" }), { status: 201 });
+    }) as typeof fetch);
+
+    await expect(client.sendMessage({
+      conversationId: "conversation-1",
+      clientMessageId: "text-message-1",
+      text: "canonical body",
+      parts: [{ type: "custom", kind: "trace", data: { value: 1 } }],
+    })).resolves.toMatchObject({ messageId: "text-message-1", outcome: "created" });
+    await client.sendMessage({
+      conversationId: "conversation-1",
+      clientMessageId: "text-message-2",
+      text: "body only",
+    });
+
+    expect(bodies).toEqual([
+      JSON.stringify({
+        type: "chat_message",
+        body: "canonical body",
+        parts: [{ type: "custom", kind: "trace", data: { value: 1 } }],
+      }),
+      JSON.stringify({ type: "chat_message", body: "body only" }),
+    ]);
+    expect(headers[0].get("idempotency-key")).toBe("text-message-1");
+    expect(headers[1].get("idempotency-key")).toBe("text-message-2");
+  });
+
   it("never synthesizes duplicate semantics or retries a failed send", async () => {
     let calls = 0;
     const client = transport((async () => {
@@ -162,7 +195,7 @@ describe("Message Service v2 HTTPS transport", () => {
     })).toThrow("https:// outside localhost tests");
   });
 
-  it("fails closed for public text/parts until v2 has an envelope-send contract", async () => {
+  it("rejects ambiguous text/content inputs and non-JSON-safe parts before fetch", async () => {
     let calls = 0;
     const client = transport((async () => {
       calls++;
@@ -173,7 +206,8 @@ describe("Message Service v2 HTTPS transport", () => {
       clientMessageId: "key-1",
       text: "trace",
       parts: [{ type: "custom", kind: "trace", data: { value: 1 } }],
-    })).rejects.toThrow("v2 envelope-send contract");
+      content: { text: "duplicate" },
+    } as never)).rejects.toThrow("cannot include content or type");
     await expect(client.sendMessage({
       conversationId: "conversation-1",
       clientMessageId: "key-ambiguous",

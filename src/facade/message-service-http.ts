@@ -177,11 +177,13 @@ function v2SendBody(input: SendMessageInput): Record<string, unknown> {
     if (hasParts && (!Array.isArray(raw.parts) || !isMessageJson(raw.parts))) {
       throw new Error("message-sdk text send parts must be JSON-safe array");
     }
-    // V2SendMessageRequest has only Type and opaque Content. Its handler
-    // forwards Content as Payload and does not map text/parts into v3
-    // Body/Parts. Do not disguise this new public shape inside Content:
-    // callers must wait for the explicit envelope-send contract.
-    throw new Error("message-sdk text/parts send requires a Message Service v2 envelope-send contract");
+    // V2SendMessageRequest additive envelope contract: Body and Parts are
+    // distinct from legacy opaque Content. `chat_message` is the established
+    // Mobile/beeos-claw normal inbound user-message type.
+    const body: Record<string, unknown> = { type: "chat_message", body: raw.text };
+    if (hasParts) body.parts = raw.parts;
+    if (input.replyTo !== undefined) body.reply_to = input.replyTo;
+    return body;
   } else {
     if (!hasContent || !hasType || typeof raw.type !== "string" || !raw.type) {
       throw new Error("message-sdk content send requires explicit non-empty type and content");

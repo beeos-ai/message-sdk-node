@@ -32,11 +32,9 @@ interface SendMessageBaseInput {
 }
 
 /**
- * Approved application send shape. It is intentionally represented before
- * the v2 envelope-send endpoint is available, but the current v2 HTTP
- * transport refuses it rather than hiding text/parts in opaque content.
- * That avoids claiming canonical envelope body/parts semantics which the
- * confirmed v2 POST contract does not yet provide.
+ * Approved application send shape. The confirmed v2 envelope extension maps
+ * this to `type:"chat_message"`, `body:text`, and optional top-level
+ * `parts`; it never hides canonical fields in legacy opaque content.
  */
 export interface TextSendMessageInput extends SendMessageBaseInput {
   text: string;
