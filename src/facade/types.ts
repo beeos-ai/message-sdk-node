@@ -24,14 +24,41 @@ export interface MessageHttpTransportPort {
   rebase(input: RebaseInput): Promise<RealtimeRebase>;
 }
 
-export interface SendMessageInput {
+interface SendMessageBaseInput {
   conversationId: string;
   /** Caller-owned stable idempotency key. The facade never generates one. */
   clientMessageId: string;
-  type: string;
-  content: MessageJson;
   replyTo?: string;
 }
+
+/**
+ * Approved application send shape. It is intentionally represented before
+ * the v2 envelope-send endpoint is available, but the current v2 HTTP
+ * transport refuses it rather than hiding text/parts in opaque content.
+ * That avoids claiming canonical envelope body/parts semantics which the
+ * confirmed v2 POST contract does not yet provide.
+ */
+export interface TextSendMessageInput extends SendMessageBaseInput {
+  text: string;
+  /** JSON-safe structured supplementary payloads stored inside content.parts. */
+  parts?: readonly MessageJson[];
+  content?: never;
+  type?: never;
+}
+
+/**
+ * Explicit escape hatch for existing typed protocol producers. It remains
+ * separate from the application text form, so there is never a question of
+ * whether `text` or `content` is authoritative.
+ */
+export interface ContentSendMessageInput extends SendMessageBaseInput {
+  type: string;
+  content: MessageJson;
+  text?: never;
+  parts?: never;
+}
+
+export type SendMessageInput = TextSendMessageInput | ContentSendMessageInput;
 
 export interface SendMessageResult {
   messageId: string;

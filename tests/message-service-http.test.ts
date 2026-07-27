@@ -42,7 +42,7 @@ function transport(fetchImpl: typeof fetch) {
 }
 
 describe("Message Service v2 HTTPS transport", () => {
-  it("sends one JSON request with a caller-owned idempotency key and no retry", async () => {
+  it("sends one generic content request with a caller-owned idempotency key and no retry", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const client = transport((async (url, init) => {
       calls.push({ url: String(url), init });
@@ -160,5 +160,32 @@ describe("Message Service v2 HTTPS transport", () => {
       async executeMethod() { return { operationId: "operation-1", outcome: "accepted" }; },
       async hydrateConversation(input) { return { conversationId: input.conversationId, events: [] }; },
     })).toThrow("https:// outside localhost tests");
+  });
+
+  it("fails closed for public text/parts until v2 has an envelope-send contract", async () => {
+    let calls = 0;
+    const client = transport((async () => {
+      calls++;
+      return new Response(JSON.stringify({ id: "unexpected" }), { status: 201 });
+    }) as typeof fetch);
+    await expect(client.sendMessage({
+      conversationId: "conversation-1",
+      clientMessageId: "key-1",
+      text: "trace",
+      parts: [{ type: "custom", kind: "trace", data: { value: 1 } }],
+    })).rejects.toThrow("v2 envelope-send contract");
+    await expect(client.sendMessage({
+      conversationId: "conversation-1",
+      clientMessageId: "key-ambiguous",
+      text: "trace",
+      content: { text: "duplicate" },
+    } as never)).rejects.toThrow("cannot include content or type");
+    await expect(client.sendMessage({
+      conversationId: "conversation-1",
+      clientMessageId: "key-2",
+      text: "trace",
+      parts: [Number.NaN],
+    } as never)).rejects.toThrow("JSON-safe array");
+    expect(calls).toBe(0);
   });
 });

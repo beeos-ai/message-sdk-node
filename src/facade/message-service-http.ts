@@ -49,10 +49,7 @@ export class MessageServiceHttpTransport implements MessageHttpTransportPort {
   }
 
   async sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
-    const body: Record<string, unknown> = {
-      type: input.type,
-      content: input.content,
-    };
+    const body = v2SendBody(input);
     if (input.replyTo !== undefined) body.reply_to = input.replyTo;
     const response = await this.request(
       `/api/v2/conversations/${encodeURIComponent(input.conversationId)}/messages`,
@@ -164,6 +161,55 @@ function stringifyBody(body: Record<string, unknown>): string {
   const encoded = JSON.stringify(body);
   if (!encoded) throw new Error("message-sdk message send body must be JSON serializable");
   return encoded;
+}
+
+function v2SendBody(input: SendMessageInput): Record<string, unknown> {
+  const raw = input as SendMessageInput & { text?: unknown; parts?: unknown; content?: unknown; type?: unknown };
+  const hasText = Object.prototype.hasOwnProperty.call(raw, "text");
+  const hasContent = Object.prototype.hasOwnProperty.call(raw, "content");
+  const hasType = Object.prototype.hasOwnProperty.call(raw, "type");
+  const hasParts = Object.prototype.hasOwnProperty.call(raw, "parts");
+  let type: string;
+  let content: unknown;
+  if (hasText) {
+    if (typeof raw.text !== "string") throw new Error("message-sdk text send requires a string text");
+    if (hasContent || hasType) throw new Error("message-sdk text send cannot include content or type");
+    if (hasParts && (!Array.isArray(raw.parts) || !isMessageJson(raw.parts))) {
+      throw new Error("message-sdk text send parts must be JSON-safe array");
+    }
+    // V2SendMessageRequest has only Type and opaque Content. Its handler
+    // forwards Content as Payload and does not map text/parts into v3
+    // Body/Parts. Do not disguise this new public shape inside Content:
+    // callers must wait for the explicit envelope-send contract.
+    throw new Error("message-sdk text/parts send requires a Message Service v2 envelope-send contract");
+  } else {
+    if (!hasContent || !hasType || typeof raw.type !== "string" || !raw.type) {
+      throw new Error("message-sdk content send requires explicit non-empty type and content");
+    }
+    if (hasParts) throw new Error("message-sdk content send cannot include parts; include them inside content");
+    if (!isMessageJson(raw.content)) throw new Error("message-sdk content send must be JSON-safe");
+    type = raw.type;
+    content = raw.content;
+  }
+  const body: Record<string, unknown> = { type, content };
+  if (input.replyTo !== undefined) body.reply_to = input.replyTo;
+  return body;
+}
+
+function isMessageJson(value: unknown, seen = new Set<unknown>()): boolean {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) return value.every((item) => isMessageJson(item, seen));
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+    return Object.values(value).every((item) => isMessageJson(item, seen));
+  } finally {
+    seen.delete(value);
+  }
 }
 
 async function jsonObject(response: Response, operation: string): Promise<Record<string, unknown>> {

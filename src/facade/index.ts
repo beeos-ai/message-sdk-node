@@ -29,6 +29,8 @@ export type {
   RebaseInput,
   SendMessageInput,
   SendMessageResult,
+  TextSendMessageInput,
+  ContentSendMessageInput,
 } from "./types.js";
 export type {
   MessageServiceHttpExplicitPorts,

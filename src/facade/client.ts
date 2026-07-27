@@ -128,7 +128,7 @@ export class MessageClientFacade {
   private async sendMessage(input: SendMessageInput): Promise<SendMessageResult> {
     assertRequired(input.conversationId, "conversationId");
     assertRequired(input.clientMessageId, "clientMessageId");
-    assertRequired(input.type, "type");
+    assertValidSendMessageInput(input);
     const result = await this.options.transport.sendMessage(input);
     // HTTP/WSS create race: suppress only the matching created echo, never
     // future deltas or terminal events for the same message.
@@ -304,6 +304,24 @@ function matchesFilter(event: AnyRealtimeEventV1, filter: RealtimeListenFilter):
 
 function assertRequired(value: string, name: string): void {
   if (!value) throw new Error(`${name} is required`);
+}
+
+function assertValidSendMessageInput(input: SendMessageInput): void {
+  const raw = input as SendMessageInput & { text?: unknown; content?: unknown; type?: unknown; parts?: unknown };
+  const hasText = Object.prototype.hasOwnProperty.call(raw, "text");
+  const hasContent = Object.prototype.hasOwnProperty.call(raw, "content");
+  const hasType = Object.prototype.hasOwnProperty.call(raw, "type");
+  const hasParts = Object.prototype.hasOwnProperty.call(raw, "parts");
+  if (hasText) {
+    if (typeof raw.text !== "string") throw new Error("text must be a string");
+    if (hasContent || hasType) throw new Error("text send cannot include content or type");
+    if (hasParts && !Array.isArray(raw.parts)) throw new Error("text send parts must be an array");
+    return;
+  }
+  if (!hasContent || !hasType || typeof raw.type !== "string" || !raw.type) {
+    throw new Error("content send requires explicit non-empty type and content");
+  }
+  if (hasParts) throw new Error("content send cannot include parts; include them inside content");
 }
 
 function subscribeAppState(port: AppStatePort | undefined, listener: (state: "active" | "background" | "inactive") => void): (() => void) | undefined {
