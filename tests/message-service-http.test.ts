@@ -119,40 +119,92 @@ describe("Message Service v2 HTTPS transport", () => {
     expect(calls).toBe(1);
   });
 
-  it("uses authenticated GET sync with only the opaque server cursor and validates full events", async () => {
+  it("collects ordered, deduped delta pages with exact sequential opaque cursor requests", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const client = transport((async (url, init) => {
       calls.push({ url: String(url), init });
+      const page = new URL(String(url)).searchParams.get("cursor");
       return new Response(JSON.stringify({
-        events: [event("7"), event("9")],
-        next_cursor: "opaque-next-cursor",
-        history_generation: "1",
-        projection_revision: "9",
-        completeness: "full",
+        events: page === "opaque previous+/="
+          ? Array.from({ length: 100 }, (_, index) => event(String(index + 1)))
+          : [event("101"), event("100")],
+        next_cursor: page === "opaque previous+/=" ? "opaque-page-2" : "opaque-final-cursor",
+        completeness: "delta",
+        has_more: page === "opaque previous+/=",
       }), { status: 200, headers: { "content-type": "application/json" } });
     }) as typeof fetch);
 
     await expect(client.rebase({
       syncCursor: "opaque previous+/=",
-      cursor: { streamSequence: "6", historyGeneration: "1" },
+      cursor: { streamSequence: "0", historyGeneration: "1" },
       reason: "sequence_gap",
     })).resolves.toMatchObject({
-      syncCursor: "opaque-next-cursor",
-      cursor: { streamSequence: "9", historyGeneration: "1" },
-      events: [expect.objectContaining({ eventId: "event-7" }), expect.objectContaining({ eventId: "event-9" })],
+      syncCursor: "opaque-final-cursor",
+      cursor: { streamSequence: "101", historyGeneration: "1" },
+      events: Array.from({ length: 101 }, (_, index) => expect.objectContaining({ eventId: `event-${index + 1}` })),
     });
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
     expect(calls[0].url).toBe("https://msg.example/api/v2/sync?cursor=opaque+previous%2B%2F%3D");
+    expect(calls[1].url).toBe("https://msg.example/api/v2/sync?cursor=opaque-page-2");
     expect(calls[0].init?.method).toBe("GET");
     expect(new Headers(calls[0].init?.headers).get("authorization")).toBe("Bearer user-bearer");
   });
 
-  it("fails closed on missing cursors, incomplete sync and missing bearer tokens", async () => {
+  it("returns an unchanged opaque cursor for an empty terminal delta page", async () => {
     const client = transport((async () => new Response(JSON.stringify({
-      events: [], next_cursor: "next", completeness: "delta",
+      events: [], next_cursor: "opaque", completeness: "delta", has_more: false,
+    }), { status: 200 })) as typeof fetch);
+
+    await expect(client.rebase({
+      syncCursor: "opaque",
+      cursor: { streamSequence: "9", historyGeneration: "1" },
+      reason: "sequence_gap",
+    })).resolves.toMatchObject({
+      events: [],
+      cursor: { streamSequence: "9", historyGeneration: "1" },
+      syncCursor: "opaque",
+    });
+  });
+
+  it.each([
+    ["a cursor loop", { events: [event("1")], next_cursor: "opaque", completeness: "delta", has_more: true }, "cursor must advance"],
+    ["an empty continuation cursor", { events: [event("1")], next_cursor: "", completeness: "delta", has_more: true }, "requires next_cursor"],
+    ["a non-delta completeness", { events: [event("1")], next_cursor: "next", completeness: "full", has_more: false }, "requires delta pages"],
+  ])("fails closed on %s without exposing a partial page", async (_case, responseBody, message) => {
+    const calls: string[] = [];
+    const client = transport((async (url) => {
+      calls.push(String(url));
+      return new Response(JSON.stringify(responseBody), { status: 200 });
+    }) as typeof fetch);
+
+    await expect(client.rebase({ syncCursor: "opaque", reason: "sequence_gap" })).rejects.toThrow(message);
+    expect(calls).toEqual(["https://msg.example/api/v2/sync?cursor=opaque"]);
+  });
+
+  it("does not expose collected earlier pages when a later page is invalid", async () => {
+    const calls: string[] = [];
+    const client = transport((async (url) => {
+      calls.push(String(url));
+      const cursor = new URL(String(url)).searchParams.get("cursor");
+      return new Response(JSON.stringify(cursor === "opaque"
+        ? { events: [event("1")], next_cursor: "page-2", completeness: "delta", has_more: true }
+        : { events: [event("2")], next_cursor: "final", completeness: "full", has_more: false }), { status: 200 });
+    }) as typeof fetch);
+
+    await expect(client.rebase({ syncCursor: "opaque", reason: "sequence_gap" })).rejects.toThrow("requires delta pages");
+    expect(calls).toEqual([
+      "https://msg.example/api/v2/sync?cursor=opaque",
+      "https://msg.example/api/v2/sync?cursor=page-2",
+    ]);
+  });
+
+  it("fails closed on generation or projection epoch recovery and missing bearer tokens", async () => {
+    const client = transport((async () => new Response(JSON.stringify({
+      events: [], next_cursor: "next", completeness: "delta", has_more: false,
     }), { status: 200 })) as typeof fetch);
     await expect(client.rebase({ reason: "sequence_gap" })).rejects.toThrow("server-issued sync cursor");
-    await expect(client.rebase({ syncCursor: "opaque", reason: "sequence_gap" })).rejects.toThrow("full authoritative");
+    await expect(client.rebase({ syncCursor: "opaque", reason: "history_generation_changed" })).rejects.toThrow("cannot recover a history generation");
+    await expect(client.rebase({ syncCursor: "opaque", reason: "projection_epoch_changed" })).rejects.toThrow("cannot recover a history generation or projection epoch");
 
     const noToken = createMessageServiceHttpTransport({
       apiBaseUrl: "https://msg.example",

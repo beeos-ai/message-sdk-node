@@ -12,6 +12,11 @@ import type {
 } from "./types.js";
 import type { RealtimeAuthProvider } from "./centrifugo-realtime.js";
 
+// Recovery pages are a bounded, all-or-nothing protocol exchange. Keep the
+// limits private so callers cannot make unbounded recovery public API.
+const MAX_SYNC_PAGES = 100;
+const MAX_SYNC_EVENTS = 10_000;
+
 /**
  * Explicit application-owned seams which Message Service does not currently
  * expose as v2 HTTPS resources.  They are intentionally required: callers
@@ -89,23 +94,71 @@ export class MessageServiceHttpTransport implements MessageHttpTransportPort {
     if (!input.syncCursor) {
       throw new Error("message-sdk realtime rebase requires a server-issued sync cursor");
     }
-    const url = new URL(`${this.apiBaseUrl}/api/v2/sync`);
-    url.searchParams.set("cursor", input.syncCursor);
-    const response = await this.request(url.pathname + url.search, { method: "GET" });
-    if (response.status !== 200) throw httpError("realtime sync", response.status);
-    const raw = await jsonObject(response, "realtime sync");
-    const completeness = requiredString(raw, "completeness", "realtime sync response");
-    if (completeness !== "full") {
-      throw new Error("message-sdk realtime sync requires a full authoritative response");
+    // A delta chain cannot replace a projection after either incompatibility.
+    // Do not guess snapshot fields or reinterpret delta pages as a snapshot.
+    if (input.reason === "history_generation_changed" || input.reason === "projection_epoch_changed") {
+      throw new Error("message-sdk realtime sync delta pages cannot recover a history generation or projection epoch change");
     }
-    const nextCursor = requiredString(raw, "next_cursor", "realtime sync response");
-    if (!Array.isArray(raw.events)) throw new Error("message-sdk realtime sync response requires events");
-    const events = raw.events.map((event) => decodeRealtimeEvent(event));
-    return {
-      events,
-      cursor: cursorFromEvents(events, input.cursor),
-      syncCursor: nextCursor,
-    };
+
+    const events: AnyRealtimeEventV1[] = [];
+    const seenCursors = new Set<string>([input.syncCursor]);
+    let cursor = input.syncCursor;
+    let expectedHistoryGeneration = input.cursor?.historyGeneration;
+    let expectedProjectionEpoch = input.cursor?.projectionEpoch;
+
+    for (let page = 0; page < MAX_SYNC_PAGES; page++) {
+      const response = await this.syncPage(cursor);
+      if (response.status !== 200) throw httpError("realtime sync", response.status);
+      const raw = await jsonObject(response, "realtime sync");
+      const completeness = requiredString(raw, "completeness", "realtime sync response");
+      if (completeness !== "delta") {
+        throw new Error("message-sdk realtime sync requires delta pages");
+      }
+      if (typeof raw.has_more !== "boolean") {
+        throw new Error("message-sdk realtime sync response requires boolean has_more");
+      }
+      const nextCursor = requiredString(raw, "next_cursor", "realtime sync response");
+      if (raw.has_more && (nextCursor === cursor || seenCursors.has(nextCursor))) {
+        throw new Error("message-sdk realtime sync response cursor must advance without loops");
+      }
+      if (!Array.isArray(raw.events)) throw new Error("message-sdk realtime sync response requires events");
+      if (raw.events.length > MAX_SYNC_EVENTS - events.length) {
+        throw new Error("message-sdk realtime sync response exceeds the maximum event count");
+      }
+
+      const pageEvents = raw.events.map((event) => decodeRealtimeEvent(event));
+      for (const event of pageEvents) {
+        expectedHistoryGeneration = requireCompatibleOrdering(
+          expectedHistoryGeneration,
+          event.ordering.historyGeneration,
+          "history generation",
+        );
+        expectedProjectionEpoch = requireCompatibleOrdering(
+          expectedProjectionEpoch,
+          event.ordering.projectionEpoch,
+          "projection epoch",
+        );
+      }
+      events.push(...pageEvents);
+      if (!raw.has_more) {
+        const orderedEvents = orderAndDedupeEvents(events);
+        return {
+          events: orderedEvents,
+          cursor: cursorFromEvents(orderedEvents, input.cursor),
+          syncCursor: nextCursor,
+        };
+      }
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    }
+
+    throw new Error("message-sdk realtime sync response exceeds the maximum page count");
+  }
+
+  private syncPage(cursor: string): Promise<Response> {
+    const url = new URL(`${this.apiBaseUrl}/api/v2/sync`);
+    url.searchParams.set("cursor", cursor);
+    return this.request(url.pathname + url.search, { method: "GET" });
   }
 
   private async request(path: string, init: RequestInit): Promise<Response> {
@@ -117,6 +170,32 @@ export class MessageServiceHttpTransport implements MessageHttpTransportPort {
     headers.set("Authorization", `Bearer ${token}`);
     return this.fetchImpl(`${this.apiBaseUrl}${path}`, { ...init, headers });
   }
+}
+
+function requireCompatibleOrdering(
+  expected: string | undefined,
+  incoming: string | undefined,
+  name: "history generation" | "projection epoch",
+): string | undefined {
+  if (expected !== undefined && incoming !== undefined && expected !== incoming) {
+    throw new Error(`message-sdk realtime sync delta pages cannot recover a ${name} change`);
+  }
+  return expected ?? incoming;
+}
+
+function orderAndDedupeEvents(events: readonly AnyRealtimeEventV1[]): AnyRealtimeEventV1[] {
+  const ordered = [...events].sort((left, right) => {
+    const leftSequence = BigInt(left.ordering.streamSequence);
+    const rightSequence = BigInt(right.ordering.streamSequence);
+    if (leftSequence !== rightSequence) return leftSequence < rightSequence ? -1 : 1;
+    return left.eventId.localeCompare(right.eventId);
+  });
+  const seenEventIds = new Set<string>();
+  return ordered.filter((event) => {
+    if (seenEventIds.has(event.eventId)) return false;
+    seenEventIds.add(event.eventId);
+    return true;
+  });
 }
 
 export function createMessageServiceHttpTransport(

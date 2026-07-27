@@ -245,10 +245,10 @@ export class MessageClientFacade {
         const rebase = await this.hydration.hydrate("realtime:rebase", () =>
           this.options.transport.rebase({ cursor: this.cursor, syncCursor: this.syncCursor, reason }),
         );
-        // The current HTTP transport is already strict about accepting only
-        // the server's documented authoritative full sync response. Paging or
-        // snapshot-shape extensions are a backend protocol precondition, not
-        // a client-side guessed field.
+        // The HTTP transport returns only a fully collected, validated delta
+        // chain. Generation and epoch changes still require a separately
+        // documented authoritative snapshot and fail closed rather than being
+        // guessed from delta fields.
         const events = orderEvents(rebase.events);
         const cursor = rebase.cursor ?? cursorFromEvents(events) ?? this.cursor;
         const syncCursor = rebase.syncCursor ?? this.syncCursor;
