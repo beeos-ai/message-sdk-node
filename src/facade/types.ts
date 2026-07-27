@@ -90,6 +90,12 @@ export interface ConversationHydration {
   events: AnyRealtimeEventV1[];
 }
 
+export type RealtimeRebaseReason =
+  | "sequence_gap"
+  | "history_generation_changed"
+  | "projection_epoch_changed"
+  | "transport_unrecovered";
+
 export interface RebaseInput {
   cursor?: RealtimeCursor;
   /**
@@ -98,7 +104,7 @@ export interface RebaseInput {
    * exposed as a Centrifugo channel or accepted from application code.
    */
   syncCursor?: string;
-  reason: "sequence_gap" | "history_generation_changed" | "projection_epoch_changed";
+  reason: RealtimeRebaseReason;
 }
 
 export interface RealtimeRebase {
@@ -114,10 +120,23 @@ export interface RealtimeSession {
   close(): Promise<void> | void;
 }
 
+export interface RealtimeRecoveryStatus {
+  /** Whether the server retained recoverable history for this connection. */
+  recoverable: boolean;
+  /** Whether Centrifuge actually recovered that history on this connect. */
+  recovered: boolean;
+  /** Whether the SDK received a server stream position without exposing it. */
+  positioned: boolean;
+}
+
 export interface RealtimeConnectInput {
   cursor?: RealtimeCursor;
+  /** Opaque Message Service cursor restored by the SDK only. */
+  syncCursor?: string;
   onEvent(event: unknown): void;
   onState(state: RealtimeConnectionState): void;
+  /** Internal transport recovery signal; no channel or token is exposed. */
+  onRecovery?(status: RealtimeRecoveryStatus): void;
 }
 
 /**
@@ -135,10 +154,22 @@ export interface RealtimeTransportPort {
   connect(input: RealtimeConnectInput): Promise<RealtimeSession>;
 }
 
-/** Optional persisted sync cursor; implementations may target SQLite/IndexedDB. */
+export interface RealtimeCheckpoint {
+  eventCursor?: RealtimeCursor;
+  /** Opaque server-issued cursor. Never a channel or application value. */
+  syncCursor?: string;
+}
+
+/**
+ * Optional persistence port backed by SQLite/IndexedDB on client platforms.
+ * The checkpoint methods preserve both recovery cursors atomically. Legacy
+ * cursor-only implementations remain supported, but cannot persist sync state.
+ */
 export interface RealtimeStoragePort {
   get(key: string): Promise<RealtimeCursor | undefined>;
   set(key: string, cursor: RealtimeCursor): Promise<void>;
+  getCheckpoint?(key: string): Promise<RealtimeCheckpoint | undefined>;
+  setCheckpoint?(key: string, checkpoint: RealtimeCheckpoint): Promise<void>;
   remove?(key: string): Promise<void>;
 }
 
@@ -178,5 +209,7 @@ export interface ConversationWatch {
 export interface MessageClientFacadeSnapshot {
   connection: RealtimeConnectionState;
   cursor?: RealtimeCursor;
+  /** Sanitized terminal recovery state; never includes transport data. */
+  recoveryError?: string;
   watchedConversationIds: readonly string[];
 }

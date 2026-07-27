@@ -43,7 +43,10 @@ export function evaluateRealtimeEvent(cursor: RealtimeCursor | undefined, event:
   const previous = BigInt(cursor.streamSequence);
   const incoming = BigInt(next.streamSequence);
   if (incoming <= previous) return { action: "ignore_stale" };
-  if (incoming > previous + 1n && event.ordering.completeness === "delta") {
+  // A missing full event can carry an irreversible delete, membership, or
+  // security change. Never accept a sequence gap merely because the arriving
+  // event describes a full entity projection.
+  if (incoming > previous + 1n) {
     return { action: "rebase", reason: "sequence_gap" };
   }
   return { action: "apply", cursor: next };

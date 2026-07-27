@@ -182,3 +182,147 @@ describe("platform-neutral MessageClient facade", () => {
     expect(client.getSnapshot().cursor).toMatchObject({ streamSequence: "3" });
   });
 });
+
+describe("realtime recovery checkpoint closure", () => {
+  it("rebases on every sequence gap, including a full event", async () => {
+    const { options, realtime, calls } = makeOptions();
+    const client = createMessageClient(options);
+    await client.connect();
+
+    realtime.input?.onEvent(created("1"));
+    realtime.input?.onEvent(created("3"));
+    await tick();
+
+    expect(calls.rebase).toBe(1);
+    expect(client.getSnapshot().cursor).toMatchObject({ streamSequence: "3" });
+  });
+
+  it("restores and serializes opaque checkpoints without writing an older cursor", async () => {
+    const writes: Array<{ eventCursor?: { streamSequence: string }; syncCursor?: string }> = [];
+    let concurrentWrites = 0;
+    let maximumConcurrentWrites = 0;
+    const realtime: { input?: RealtimeConnectInput } = {};
+    const options: MessageClientFacadeOptions = {
+      transport: {
+        async sendMessage(input) { return { messageId: input.clientMessageId, outcome: "created" }; },
+        async executeMethod() { return { operationId: "operation-1", outcome: "accepted" }; },
+        async hydrateConversation(input) { return { conversationId: input.conversationId, events: [] }; },
+        async rebase() { return { events: [] }; },
+      },
+      realtime: {
+        async connect(input) {
+          realtime.input = input;
+          return { syncCursor: "opaque-issued", close: () => undefined };
+        },
+      },
+      storage: {
+        async get() { return undefined; },
+        async set() { throw new Error("checkpoint storage should be preferred"); },
+        async getCheckpoint() {
+          return {
+            eventCursor: { streamSequence: "1", historyGeneration: "generation-1" },
+            syncCursor: "opaque-restored",
+          };
+        },
+        async setCheckpoint(_key, checkpoint) {
+          concurrentWrites++;
+          maximumConcurrentWrites = Math.max(maximumConcurrentWrites, concurrentWrites);
+          await Promise.resolve();
+          writes.push(checkpoint);
+          concurrentWrites--;
+        },
+      },
+    };
+    const client = createMessageClient(options);
+    await client.connect();
+    expect(realtime.input?.cursor).toMatchObject({ streamSequence: "1" });
+    expect(realtime.input?.syncCursor).toBe("opaque-restored");
+
+    realtime.input?.onEvent(created("2"));
+    realtime.input?.onEvent(delta("3"));
+    realtime.input?.onEvent(created("2")); // stale; it must never overwrite sequence 3.
+    await tick();
+    await tick();
+
+    expect(maximumConcurrentWrites).toBe(1);
+    expect(writes.at(-1)).toMatchObject({
+      eventCursor: { streamSequence: "3" },
+      syncCursor: "opaque-restored",
+    });
+  });
+
+  it("pauses, rebases, then replays buffered newer events in order", async () => {
+    let resolveRebase!: (value: { cursor: { streamSequence: string; historyGeneration: string }; events: AnyRealtimeEventV1[] }) => void;
+    const rebase = new Promise<{ cursor: { streamSequence: string; historyGeneration: string }; events: AnyRealtimeEventV1[] }>((resolve) => {
+      resolveRebase = resolve;
+    });
+    const realtime: { input?: RealtimeConnectInput } = {};
+    const options: MessageClientFacadeOptions = {
+      transport: {
+        async sendMessage(input) { return { messageId: input.clientMessageId, outcome: "created" }; },
+        async executeMethod() { return { operationId: "operation-1", outcome: "accepted" }; },
+        async hydrateConversation(input) { return { conversationId: input.conversationId, events: [] }; },
+        async rebase() { return rebase; },
+      },
+      realtime: {
+        async connect(input) {
+          realtime.input = input;
+          return { close: () => undefined };
+        },
+      },
+    };
+    const client = createMessageClient(options);
+    const seen: string[] = [];
+    client.listen({}, (event) => seen.push(event.eventId));
+    await client.connect();
+
+    realtime.input?.onEvent(created("1"));
+    realtime.input?.onEvent(delta("3")); // starts recovery and is buffered
+    realtime.input?.onEvent(delta("4")); // must not interleave with rebase
+    resolveRebase({
+      cursor: { streamSequence: "3", historyGeneration: "generation-1" },
+      events: [delta("2"), delta("3")],
+    });
+    await tick();
+    await tick();
+
+    expect(seen).toEqual(["event-1", "delta-2", "delta-3", "delta-4"]);
+    expect(client.getSnapshot().cursor).toMatchObject({ streamSequence: "4" });
+  });
+
+  it("fails explicitly rather than falling back when Centrifuge reports unrecovered history", async () => {
+    const { options, realtime, calls } = makeOptions();
+    const client = createMessageClient(options);
+    await client.connect();
+
+    realtime.input?.onRecovery?.({ recoverable: true, recovered: false, positioned: true });
+    await tick();
+
+    expect(calls.rebase).toBe(1);
+    expect(client.getSnapshot().connection).toBe("connected");
+  });
+});
+
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe("realtime recovery failures", () => {
+  it("enters an explicit failed state and never selects another transport", async () => {
+    const { options, realtime } = makeOptions();
+    options.transport.rebase = async () => {
+      throw new Error("authority sync unavailable");
+    };
+    const client = createMessageClient(options);
+    await client.connect();
+
+    realtime.input?.onRecovery?.({ recoverable: false, recovered: false, positioned: false });
+    await tick();
+    await tick();
+
+    expect(client.getSnapshot()).toMatchObject({
+      connection: "failed",
+      recoveryError: "authority sync unavailable",
+    });
+  });
+});

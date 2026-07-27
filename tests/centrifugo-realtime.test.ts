@@ -87,7 +87,7 @@ class FakeNativeCentrifuge implements CentrifugeConnection {
     FakeNativeCentrifuge.instances.push(this);
   }
 
-  on(event: "connecting" | "connected" | "disconnected" | "publication" | "error", listener: (context: any) => void): unknown {
+  on(event: "connecting" | "connected" | "disconnected" | "publication" | "subscribed" | "error", listener: (context: any) => void): unknown {
     this.listeners.set(event, listener);
   }
 
@@ -103,7 +103,7 @@ class FakeNativeCentrifuge implements CentrifugeConnection {
     this.setTokens.push(token);
   }
 
-  emit(event: "connecting" | "connected" | "disconnected" | "publication" | "error", context: any = {}): void {
+  emit(event: "connecting" | "connected" | "disconnected" | "publication" | "subscribed" | "error", context: any = {}): void {
     this.listeners.get(event)?.(context);
   }
 }
@@ -179,6 +179,30 @@ describe("SDK-owned Centrifugo realtime transport", () => {
     expect(publications).toEqual([{ eventId: "event-1" }]);
     expect(native.setTokens).toEqual(["refreshed-token"]);
     expect(native.disconnected).toBe(true);
+  });
+
+  it("reduces subscribed recovery metadata without exposing stream or channel details", async () => {
+    FakeNativeCentrifuge.instances = [];
+    const factory = createSingleWssCentrifugeFactory(FakeNativeCentrifuge as never, function NativeWebSocket() {});
+    const statuses: unknown[] = [];
+    factory.create({
+      url: "wss://msg-ws.example/connection/websocket",
+      token: "initial-token",
+      onPublication: () => undefined,
+      onState: () => undefined,
+      onRecovery: (status) => statuses.push(status),
+      onRefreshRequired: async () => undefined,
+      onError: () => undefined,
+    });
+    FakeNativeCentrifuge.instances[0].emit("subscribed", {
+      recoverable: true,
+      wasRecovering: true,
+      recovered: false,
+      streamPosition: { offset: 7, epoch: "not-exposed" },
+      channel: "not-exposed",
+    });
+
+    expect(statuses).toEqual([{ recoverable: true, recovered: false, positioned: true }]);
   });
 
   it("uses one physical client across facade listeners and watches without exposing channels", async () => {
@@ -276,7 +300,7 @@ describe("SDK-owned Centrifugo realtime transport", () => {
     expect(factory.clients[0].closed).toBe(true);
   });
 
-  it("retires a terminally disconnected native client before the facade reconnects", async () => {
+  it("keeps one physical client across transient disconnect and reconnect", async () => {
     const factory = new FakeCentrifugeFactory();
     const realtime = createCentrifugoRealtimeTransport({
       apiBaseUrl: "https://msg.example",
@@ -287,10 +311,12 @@ describe("SDK-owned Centrifugo realtime transport", () => {
     const client = createMessageClient(facadeOptions(realtime));
     await client.connect();
     factory.clients[0].options.onState("disconnected");
+    factory.clients[0].options.onState("reconnecting");
+    factory.clients[0].options.onState("connected");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(factory.clients).toHaveLength(2);
-    expect(factory.clients[0]).not.toBe(factory.clients[1]);
+    expect(factory.clients).toHaveLength(1);
+    expect(factory.clients[0].closed).toBe(false);
     expect(client.getSnapshot().connection).toBe("connected");
   });
 

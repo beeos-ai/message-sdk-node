@@ -1,6 +1,7 @@
 import type {
   RealtimeConnectInput,
   RealtimeConnectionState,
+  RealtimeRecoveryStatus,
   RealtimeSession,
   RealtimeTransportPort,
 } from "./types.js";
@@ -28,6 +29,8 @@ export interface CentrifugeClientOptions {
   readonly token: string;
   onPublication(publication: unknown): void;
   onState(state: RealtimeConnectionState): void;
+  /** Internal recovery result only; it contains no channel or token. */
+  onRecovery?(status: RealtimeRecoveryStatus): void;
   onRefreshRequired(): Promise<void>;
   onError(error: unknown): void;
 }
@@ -103,14 +106,18 @@ export class CentrifugoRealtimeTransport implements RealtimeTransportPort {
       },
       onState: (state) => {
         if (!active || active.closed) return;
-        // A terminal close must be retired before the facade reacts to it.
-        // Otherwise its explicit reconnect would receive this stale client
-        // and falsely mark the old WSS as connected again.
-        if (state === "disconnected" || state === "failed") {
+        // Centrifuge owns transient reconnect on the same physical WSS. A
+        // disconnected state is therefore not a retirement signal. Only a
+        // terminal failed state or explicit close allows a replacement client.
+        if (state === "failed") {
           active.closed = true;
           if (this.active === active) this.active = undefined;
         }
         active.input.onState(state);
+      },
+      onRecovery: (status) => {
+        if (!active || active.closed) return;
+        active.input.onRecovery?.(status);
       },
       onRefreshRequired: async () => {
         if (!active || active.closed) throw new Error("message-sdk realtime session is closed");

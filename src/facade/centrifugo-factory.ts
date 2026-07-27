@@ -4,7 +4,7 @@ import type {
   CentrifugeClientOptions,
 } from "./centrifugo-realtime.js";
 
-type CentrifugeEvent = "connecting" | "connected" | "disconnected" | "publication" | "error";
+type CentrifugeEvent = "connecting" | "connected" | "disconnected" | "publication" | "subscribed" | "error";
 
 /** Structural subset of centrifuge-js. It deliberately omits subscriptions and publish. */
 export interface CentrifugeConnection {
@@ -65,6 +65,17 @@ export function createSingleWssCentrifugeFactory(
       });
       client.on("publication", (context) => {
         if (!closed) options.onPublication(context?.data);
+      });
+      client.on("subscribed", (context) => {
+        if (closed) return;
+        // Centrifuge exposes subscribed recovery metadata here. Reduce it to
+        // booleans so no channel, stream, token, or audience data crosses the
+        // SDK boundary.
+        options.onRecovery?.({
+          recoverable: context?.recoverable === true,
+          recovered: context?.recovered === true,
+          positioned: context?.positioned === true || context?.streamPosition !== undefined,
+        });
       });
       client.on("error", () => {
         // centrifuge-js reports retryable transport/token errors before its
