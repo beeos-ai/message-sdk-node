@@ -108,13 +108,17 @@ class FakeNativeCentrifuge implements CentrifugeConnection {
   }
 }
 
-function response(token: string, cursor = "opaque-sync-cursor"): Response {
+function response(
+  token: string,
+  cursor = "opaque-sync-cursor",
+  options: { realtimeUrl?: string; expiresAt?: number } = {},
+): Response {
   return new Response(
     JSON.stringify({
       token,
-      realtime_url: "wss://msg-ws.example/connection/websocket",
+      realtime_url: options.realtimeUrl ?? "wss://msg-ws.example/connection/websocket",
       sync_cursor: cursor,
-      expires_at: 1_785_000_000,
+      expires_at: options.expiresAt ?? Math.floor(Date.now() / 1_000) + 900,
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
@@ -326,7 +330,7 @@ describe("SDK-owned Centrifugo realtime transport", () => {
       apiBaseUrl: "https://msg.example",
       authProvider: { async getAccessToken() { return "user-bearer"; } },
       centrifuge: factory,
-      fetchImpl: (async () => new Response(JSON.stringify({ token: "x", realtime_url: "https://not-wss.example", sync_cursor: "x" }))) as typeof fetch,
+      fetchImpl: (async () => response("x", "x", { realtimeUrl: "https://not-wss.example" })) as typeof fetch,
     });
     await expect(badEndpoint.connect({ onEvent: () => undefined, onState: () => undefined })).rejects.toThrow("wss://");
 
@@ -334,9 +338,67 @@ describe("SDK-owned Centrifugo realtime transport", () => {
       apiBaseUrl: "https://msg.example",
       authProvider: { async getAccessToken() { return "user-bearer"; } },
       centrifuge: factory,
-      fetchImpl: (async () => new Response(JSON.stringify({ token: "x", realtime_url: "wss://msg.example", sync_cursor: "x", channels: ["usr:leak"] }))) as typeof fetch,
+      fetchImpl: (async () => new Response(JSON.stringify({
+        token: "x",
+        realtime_url: "wss://msg.example",
+        sync_cursor: "x",
+        channels: ["usr:leak"],
+        expires_at: Math.floor(Date.now() / 1_000) + 900,
+      }))) as typeof fetch,
     });
     await expect(leakingEndpoint.connect({ onEvent: () => undefined, onState: () => undefined })).rejects.toThrow("leaked channels");
+    expect(factory.clients).toHaveLength(0);
+  });
+
+  it("retires the one WSS client when refresh returns an unusable or mismatched session", async () => {
+    const factory = new FakeCentrifugeFactory();
+    const states: RealtimeConnectionState[] = [];
+    let issue = 0;
+    const realtime = createCentrifugoRealtimeTransport({
+      apiBaseUrl: "https://msg.example",
+      authProvider: { async getAccessToken() { return "user-bearer"; } },
+      centrifuge: factory,
+      fetchImpl: (async () => {
+        issue++;
+        return issue === 1
+          ? response("initial-token")
+          : response("refresh-token", "opaque-sync-cursor", { realtimeUrl: "wss://other.example/connection/websocket" });
+      }) as typeof fetch,
+    });
+    const input: RealtimeConnectInput = {
+      onEvent: () => undefined,
+      onState: (state) => states.push(state),
+    };
+
+    await realtime.connect(input);
+    await expect(factory.clients[0].options.onRefreshRequired()).rejects.toThrow("changed the WSS endpoint");
+
+    expect(factory.clients).toHaveLength(1);
+    expect(factory.clients[0].closed).toBe(true);
+    expect(factory.clients[0].updatedTokens).toEqual([]);
+    expect(states).toEqual(["connected", "failed"]);
+  });
+
+  it("rejects expired or unsafe issued sessions without logging their token", async () => {
+    const factory = new FakeCentrifugeFactory();
+    const expiredToken = "do-not-log-session-token";
+    const expired = createCentrifugoRealtimeTransport({
+      apiBaseUrl: "https://msg.example",
+      authProvider: { async getAccessToken() { return "user-bearer"; } },
+      centrifuge: factory,
+      fetchImpl: (async () => response(expiredToken, "x", { expiresAt: 1 })) as typeof fetch,
+    });
+    await expect(expired.connect({ onEvent: () => undefined, onState: () => undefined }))
+      .rejects.toThrow("future expires_at");
+
+    const unsafe = createCentrifugoRealtimeTransport({
+      apiBaseUrl: "https://msg.example",
+      authProvider: { async getAccessToken() { return "user-bearer"; } },
+      centrifuge: factory,
+      fetchImpl: (async () => response("x", "x", { realtimeUrl: "wss://token@msg.example/#fragment" })) as typeof fetch,
+    });
+    await expect(unsafe.connect({ onEvent: () => undefined, onState: () => undefined }))
+      .rejects.toThrow("unsafe realtime_url");
     expect(factory.clients).toHaveLength(0);
   });
 });

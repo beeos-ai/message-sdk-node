@@ -54,6 +54,8 @@ interface IssuedSession {
   realtimeUrl: string;
   /** Opaque server recovery cursor. It never becomes a client channel. */
   syncCursor: string;
+  /** Server-issued lifetime only; the value never leaves this transport. */
+  expiresAt: number;
 }
 
 interface ActiveConnection {
@@ -96,7 +98,13 @@ export class CentrifugoRealtimeTransport implements RealtimeTransportPort {
 
   private async open(input: RealtimeConnectInput): Promise<RealtimeSession> {
 
-    const session = await this.issueSession("/api/v2/realtime/session");
+    let session: IssuedSession;
+    try {
+      session = await this.issueSession("/api/v2/realtime/session");
+    } catch (error) {
+      input.onState("failed");
+      throw error;
+    }
     let active: ActiveConnection | undefined;
     const client = this.options.centrifuge.create({
       url: session.realtimeUrl,
@@ -110,8 +118,8 @@ export class CentrifugoRealtimeTransport implements RealtimeTransportPort {
         // disconnected state is therefore not a retirement signal. Only a
         // terminal failed state or explicit close allows a replacement client.
         if (state === "failed") {
-          active.closed = true;
-          if (this.active === active) this.active = undefined;
+          this.failActive(active);
+          return;
         }
         active.input.onState(state);
       },
@@ -125,10 +133,7 @@ export class CentrifugoRealtimeTransport implements RealtimeTransportPort {
       },
       onError: () => {
         if (!active || active.closed) return;
-        active.closed = true;
-        if (this.active === active) this.active = undefined;
-        void Promise.resolve(active.client.close()).catch(() => undefined);
-        active.input.onState("failed");
+        this.failActive(active);
       },
     });
 
@@ -149,10 +154,7 @@ export class CentrifugoRealtimeTransport implements RealtimeTransportPort {
     try {
       await client.connect();
     } catch (error) {
-      active.closed = true;
-      if (this.active === active) this.active = undefined;
-      input.onState("failed");
-      await Promise.resolve(client.close()).catch(() => undefined);
+      this.failActive(active);
       throw error;
     }
     return handle;
@@ -161,19 +163,35 @@ export class CentrifugoRealtimeTransport implements RealtimeTransportPort {
   private async refresh(active: ActiveConnection): Promise<void> {
     if (active.refreshPromise) return active.refreshPromise;
     active.refreshPromise = (async () => {
-      const refreshed = await this.issueSession("/api/v2/realtime/session/refresh");
-      // A refresh must preserve the transport endpoint. Swapping an endpoint
-      // underneath a connected user would silently create a second route.
-      if (refreshed.realtimeUrl !== active.session.realtimeUrl) {
-        active.input.onState("failed");
-        throw new Error("message-sdk realtime refresh changed the WSS endpoint");
+      try {
+        const refreshed = await this.issueSession("/api/v2/realtime/session/refresh");
+        // A refresh must preserve the transport endpoint. Swapping an endpoint
+        // underneath a connected user would silently create a second route.
+        if (refreshed.realtimeUrl !== active.session.realtimeUrl) {
+          throw new Error("message-sdk realtime refresh changed the WSS endpoint");
+        }
+        await active.client.updateToken(refreshed.token);
+        active.session = refreshed;
+      } catch (error) {
+        // Session identity and audience are server-bound. Any refresh failure
+        // therefore invalidates this physical connection rather than allowing
+        // a stale token, a second route, or any transport fallback to continue.
+        this.failActive(active);
+        throw error;
       }
-      await active.client.updateToken(refreshed.token);
-      active.session = refreshed;
     })().finally(() => {
       if (active) active.refreshPromise = undefined;
     });
     return active.refreshPromise;
+  }
+
+  /** Retire the only WSS client exactly once; never replace it implicitly. */
+  private failActive(active: ActiveConnection): void {
+    if (active.closed) return;
+    active.closed = true;
+    if (this.active === active) this.active = undefined;
+    void Promise.resolve(active.client.close()).catch(() => undefined);
+    active.input.onState("failed");
   }
 
   private async issueSession(path: "/api/v2/realtime/session" | "/api/v2/realtime/session/refresh"): Promise<IssuedSession> {
@@ -207,6 +225,7 @@ function decodeIssuedSession(raw: unknown): IssuedSession {
   const token = readString(raw, "token");
   const realtimeUrl = readString(raw, "realtime_url");
   const syncCursor = readString(raw, "sync_cursor");
+  const expiresAt = readFutureUnixSeconds(raw, "expires_at");
   let parsed: URL;
   try {
     parsed = new URL(realtimeUrl);
@@ -216,7 +235,10 @@ function decodeIssuedSession(raw: unknown): IssuedSession {
   if (parsed.protocol !== "wss:") {
     throw new Error("message-sdk realtime session requires a wss:// realtime_url");
   }
-  return { token, realtimeUrl, syncCursor };
+  if (parsed.username || parsed.password || parsed.hash) {
+    throw new Error("message-sdk realtime session returned an unsafe realtime_url");
+  }
+  return { token, realtimeUrl, syncCursor, expiresAt };
 }
 
 function normalizeApiBaseUrl(value: string): string {
@@ -235,10 +257,18 @@ function normalizeApiBaseUrl(value: string): string {
 
 function readString(raw: Record<string, unknown>, key: string): string {
   const value = raw[key];
-  if (typeof value !== "string" || !value) {
+  if (typeof value !== "string" || !value || value !== value.trim()) {
     throw new Error(`message-sdk realtime session response requires ${key}`);
   }
   return value;
+}
+
+function readFutureUnixSeconds(raw: Record<string, unknown>, key: string): number {
+  const value = raw[key];
+  if (!Number.isSafeInteger(value) || (value as number) <= Math.floor(Date.now() / 1_000)) {
+    throw new Error(`message-sdk realtime session response requires a future ${key}`);
+  }
+  return value as number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
