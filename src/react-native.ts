@@ -1,13 +1,6 @@
-/** React Native entrypoint. AppState, NetInfo and SQLite are injected by the host. */
-export {
-  createCentrifugoRealtimeTransport,
-  createMessageClient,
-  CentrifugoRealtimeTransport,
-  MessageClientFacade,
-} from "./facade/index.js";
-export {
-  createReactNativeCentrifugeClientFactory,
-  createReactNativeCentrifugoRealtimeTransport,
-} from "./facade/centrifugo-browser.js";
-export type * from "./facade/index.js";
-export * from "./protocol/index.js";
+/** React Native entrypoint; its MessageClient API is identical on every platform. */
+export { createMessageClient } from "./unified-client.js";
+export { createReactNativeMessageClientComposition } from "./react-native-runtime.js";
+export type { MessageClient } from "./unified-client.js";
+export type * from "./facade/contracts.js";
+export type { ReactNativeMessageClientOptions } from "./react-native-runtime.js";

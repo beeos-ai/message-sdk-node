@@ -22,7 +22,7 @@ function messageCreated(sequence = "1"): RealtimeEventV1<"message.created"> {
       messageId: "message-1",
     },
     actor: { kind: "user", id: "user-1" },
-    ordering: { streamSequence: sequence, completeness: "full", historyGeneration: "generation-1" },
+    ordering: { streamSequence: sequence, messageOffset: sequence, completeness: "full", historyGeneration: "generation-1" },
     correlation: { requestId: "request-1", idempotencyKeyHash: "hash-1" },
     occurredAt: "2026-07-28T00:00:00.000Z",
     data: {
@@ -46,7 +46,7 @@ function messageDelta(sequence: string): RealtimeEventV1<"message.delta"> {
     ...messageCreated(sequence),
     eventId: `delta-${sequence}`,
     type: "message.delta",
-    ordering: { streamSequence: sequence, completeness: "delta", historyGeneration: "generation-1" },
+    ordering: { streamSequence: sequence, messageOffset: sequence, completeness: "delta", historyGeneration: "generation-1" },
     data: {
       message: {
         id: "message-1",
@@ -104,21 +104,60 @@ describe("RealtimeEventV1 protocol", () => {
     };
     expect(() => decodeRealtimeEvent(conversation)).not.toThrow();
 
+    const modelSet = {
+      ...conversation,
+      eventId: "conversation-model-set",
+      data: { conversation: { ...conversation.data.conversation, modelOverrideId: "provider/model" } },
+    };
+    expect(decodeRealtimeEvent(modelSet)).toMatchObject({
+      data: { conversation: { modelOverrideId: "provider/model" } },
+    });
+    const modelCleared = {
+      ...modelSet,
+      eventId: "conversation-model-cleared",
+      data: { conversation: { ...conversation.data.conversation, modelOverrideId: null } },
+    };
+    expect(decodeRealtimeEvent(modelCleared)).toMatchObject({
+      data: { conversation: { modelOverrideId: null } },
+    });
+    const invalidModel = {
+      ...modelSet,
+      eventId: "conversation-model-invalid",
+      data: { conversation: { ...conversation.data.conversation, modelOverrideId: 42 } },
+    };
+    expect(() => decodeRealtimeEvent(invalidModel)).toThrow(RealtimeEventValidationError);
+
     const operation = {
       ...messageCreated(),
       eventId: "operation-1",
       type: "operation.terminal" as const,
-      scope: { tenantId: "tenant-1", operationId: "operation-1" },
+      scope: { tenantId: "tenant-1", instanceId: "instance-1", operationId: "operation-1" },
       data: {
-        operation: { id: "operation-1", method: "instance.start", state: "completed" },
+        operation: {
+          id: "operation-1",
+          instanceId: "instance-1",
+          target: { scope: "instance" as const },
+          method: "instance/start",
+          capability: "instance",
+          contractRevision: "2026-07-14.3" as const,
+          transport: "service" as const,
+          sequence: "3",
+          status: "succeeded" as const,
+          effectState: "committed" as const,
+          terminal: true,
+          result: {},
+          createdAt: "2026-07-28T00:00:00.000Z",
+          updatedAt: "2026-07-28T00:00:00.000Z",
+          revision: "3",
+        },
       },
     };
     expect(() => decodeRealtimeEvent(operation)).not.toThrow();
   });
 
-  it("deduplicates the WSS message.created echo after the HTTP create", () => {
+  it("deduplicates repeated WSS events while MessageClient owns HTTP/WSS reconciliation", () => {
     const dedupe = new RealtimeDedupe();
-    dedupe.recordHttpMessageCreated("message-1");
+    expect(dedupe.accept(messageCreated())).toBe(true);
     expect(dedupe.accept(messageCreated())).toBe(false);
     expect(dedupe.accept(messageDelta("2"))).toBe(true);
     expect(dedupe.accept(messageDelta("2"))).toBe(false);

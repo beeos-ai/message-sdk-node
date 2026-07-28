@@ -1,8 +1,8 @@
 import type { AnyRealtimeEventV1 } from "./realtime.js";
 
 /**
- * Bounded event/race de-duplication. HTTP creates are registered before the
- * matching WSS echo arrives; deltas remain independently ordered by revision.
+ * Bounded realtime event de-duplication. HTTP/WSS identity reconciliation is
+ * owned by MessageClient's projection path, not by this transport-level set.
  */
 export class RealtimeDedupe {
   private readonly seen = new Map<string, true>();
@@ -11,10 +11,6 @@ export class RealtimeDedupe {
     if (!Number.isInteger(maxEntries) || maxEntries < 1) {
       throw new Error("maxEntries must be a positive integer");
     }
-  }
-
-  recordHttpMessageCreated(messageId: string): void {
-    this.remember(`message.created:${messageId}`);
   }
 
   accept(event: AnyRealtimeEventV1): boolean {
@@ -67,9 +63,17 @@ function semanticKey(event: AnyRealtimeEventV1): string | undefined {
       return `${event.type}:${event.scope.instanceId}:${revision}`;
     case "agent.updated":
       return `${event.type}:${event.scope.agentId}:${revision}`;
+    case "inbox.conversation.available":
+    case "inbox.conversation.unavailable":
+      return `${event.type}:${event.data.conversationId}:${revision}`;
     case "operation.started":
     case "operation.progress":
     case "operation.terminal":
       return `${event.type}:${event.scope.operationId}:${revision}`;
+    case "runtime.dispatch.failed":
+      // Ephemeral dispatch failures dedupe only by stable eventId. They have
+      // no durable entity revision/cursor and must not collapse distinct
+      // attempts for the same message.
+      return undefined;
   }
 }

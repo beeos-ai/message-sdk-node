@@ -5,6 +5,10 @@
  * React, or the REST client. Platform adapters only transport these events;
  * the protocol layer owns their shape and validation.
  */
+import {
+  isRuntimeDispatchFailureData,
+  type RuntimeDispatchReceipt,
+} from "./runtime-dispatch.js";
 
 export const REALTIME_EVENT_TYPES = [
   "message.created",
@@ -21,9 +25,12 @@ export const REALTIME_EVENT_TYPES = [
   "conversation.unread.updated",
   "instance.updated",
   "agent.updated",
+  "inbox.conversation.available",
+  "inbox.conversation.unavailable",
   "operation.started",
   "operation.progress",
   "operation.terminal",
+  "runtime.dispatch.failed",
   "typing.started",
   "typing.stopped",
 ] as const;
@@ -53,6 +60,8 @@ export interface RealtimeOrdering {
   /** Decimal integer, serialized as a string so JSON cannot lose precision. */
   streamSequence: string;
   entityRevision?: string;
+  /** Durable conversation-local message offset, when the producer has one. */
+  messageOffset?: string;
   projectionUid?: string;
   projectionEpoch?: string;
   historyGeneration?: string;
@@ -71,6 +80,7 @@ export interface RealtimeCorrelation {
 /** Immutable identity used by delta events, where the full snapshot is not repeated. */
 export interface RealtimeMessageIdentity {
   id: string;
+  offset?: number;
   conversationId: string;
   senderId: string;
 }
@@ -93,6 +103,7 @@ export interface RealtimeMessage extends RealtimeMessageIdentity {
 export interface RealtimeConversation {
   id: string;
   title?: string;
+  modelOverrideId?: string | null;
   state: "open" | "closed";
   metadataVersion: string;
   historyGeneration: string;
@@ -109,10 +120,32 @@ export interface RealtimeMember {
 
 export interface RealtimeOperation {
   id: string;
+  instanceId: string;
+  target:
+    | { scope: "instance" }
+    | { scope: "agent"; platformAgentId: string }
+    | { scope: "conversation"; platformAgentId: string; conversationId: string };
   method: string;
-  state: "started" | "running" | "completed" | "failed" | "cancelled" | "outcome_unknown";
+  capability: string;
+  contractRevision: "2026-07-14.3";
+  transport: "service";
+  sequence: string;
+  cursor?: string;
+  status:
+    | "queued" | "running" | "runtime_committed" | "projection_pending"
+    | "succeeded" | "failed" | "cancelled" | "expired"
+    | "outcome_unknown" | "projection_blocked";
+  effectState:
+    | "queued" | "running" | "committed" | "failed" | "cancelled"
+    | "expired" | "outcome_unknown";
+  terminal: boolean;
+  progress?: JsonValue;
   result?: JsonValue;
-  errorCode?: string;
+  error?: JsonValue;
+  projection?: JsonValue;
+  createdAt: string;
+  updatedAt: string;
+  revision: string;
 }
 
 export interface RealtimeEventDataMap {
@@ -130,9 +163,12 @@ export interface RealtimeEventDataMap {
   "conversation.unread.updated": { identityId: string; unreadCount: number };
   "instance.updated": { instanceId: string; status: string };
   "agent.updated": { agentId: string; status: string; revision: string };
+  "inbox.conversation.available": { conversationId: string };
+  "inbox.conversation.unavailable": { conversationId: string };
   "operation.started": { operation: RealtimeOperation };
-  "operation.progress": { operation: RealtimeOperation; progress?: number };
+  "operation.progress": { operation: RealtimeOperation };
   "operation.terminal": { operation: RealtimeOperation };
+  "runtime.dispatch.failed": Exclude<RuntimeDispatchReceipt, { status: "accepted" }>;
   "typing.started": { identityId: string };
   "typing.stopped": { identityId: string };
 }
@@ -176,7 +212,23 @@ function isDecimalString(value: unknown): value is string {
 }
 
 function isRFC3339(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = Number(match[10] ?? 0);
+  const offsetMinute = Number(match[11] ?? 0);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1 && month <= 12
+    && day >= 1 && day <= days[month - 1]
+    && hour <= 23 && minute <= 59 && second <= 59
+    && offsetHour <= 23 && offsetMinute <= 59;
 }
 
 function isJsonValue(value: unknown): value is JsonValue {
@@ -191,15 +243,16 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
 
 function isMessageIdentity(value: unknown): value is Record<string, unknown> {
   return isRecord(value)
-    && hasOnlyKeys(value, ["id", "conversationId", "senderId"])
+    && hasOnlyKeys(value, ["id", "conversationId", "offset", "senderId"])
     && hasString(value, "id")
     && hasString(value, "conversationId")
-    && hasString(value, "senderId");
+    && hasString(value, "senderId")
+    && (value.offset === undefined || (Number.isSafeInteger(value.offset) && (value.offset as number) >= 0));
 }
 
 function isMessageSnapshot(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value) || !hasOnlyKeys(value, [
-    "id", "conversationId", "senderId", "type", "replyTo", "body", "parts", "state", "stopReason", "content",
+    "id", "conversationId", "offset", "senderId", "type", "replyTo", "body", "parts", "state", "stopReason", "content",
     "createdAt", "updatedAt", "historyGeneration",
   ])) return false;
   if (!hasString(value, "id") || !hasString(value, "conversationId") || !hasString(value, "senderId")) return false;
@@ -214,12 +267,14 @@ function isMessageSnapshot(value: unknown): value is Record<string, unknown> {
 
 function isConversationSnapshot(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value) || !hasOnlyKeys(value, [
-    "id", "title", "state", "metadataVersion", "historyGeneration", "lastMessageId", "lastActivityAt", "updatedAt",
+    "id", "title", "modelOverrideId", "state", "metadataVersion", "historyGeneration", "lastMessageId", "lastActivityAt", "updatedAt",
   ]) || !hasString(value, "id")) return false;
   if (!["open", "closed"].includes(String(value.state))) return false;
   if (!isDecimalString(value.metadataVersion) || !isDecimalString(value.historyGeneration)) return false;
   if (!isRFC3339(value.updatedAt)) return false;
   return (value.title === undefined || typeof value.title === "string")
+    && (value.modelOverrideId === undefined || value.modelOverrideId === null
+      || (typeof value.modelOverrideId === "string" && value.modelOverrideId.length > 0))
     && (value.lastMessageId === undefined || typeof value.lastMessageId === "string")
     && (value.lastActivityAt === undefined || isRFC3339(value.lastActivityAt));
 }
@@ -233,11 +288,56 @@ function isMemberSnapshot(value: unknown): value is Record<string, unknown> {
 }
 
 function isOperationSnapshot(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["id", "method", "state", "result", "errorCode"])
-    || !hasString(value, "id") || !hasString(value, "method")) return false;
-  if (!["started", "running", "completed", "failed", "cancelled", "outcome_unknown"].includes(String(value.state))) return false;
-  return (value.result === undefined || isJsonValue(value.result))
-    && (value.errorCode === undefined || typeof value.errorCode === "string");
+  if (!isRecord(value) || !hasOnlyKeys(value, [
+    "id", "instanceId", "target", "method", "capability", "contractRevision",
+    "transport", "sequence", "cursor", "status", "effectState", "terminal",
+    "progress", "result", "error", "projection", "createdAt", "updatedAt", "revision",
+  ])) return false;
+  if (!hasString(value, "id") || !hasString(value, "instanceId")
+    || !hasString(value, "method") || !hasString(value, "capability")) return false;
+  if (value.contractRevision !== "2026-07-14.3" || value.transport !== "service") return false;
+  if (!isDecimalString(value.sequence) || !isDecimalString(value.revision)) return false;
+  if (value.cursor !== undefined && !hasString(value, "cursor")) return false;
+  if (!isRuntimeTarget(value.target) || !isRFC3339(value.createdAt) || !isRFC3339(value.updatedAt)) return false;
+  if (typeof value.terminal !== "boolean" || !isOperationStateCompatible(
+    String(value.status),
+    String(value.effectState),
+    value.terminal,
+  )) return false;
+  return (value.progress === undefined || isJsonValue(value.progress))
+    && (value.result === undefined || isJsonValue(value.result))
+    && (value.error === undefined || isJsonValue(value.error))
+    && (value.projection === undefined || isJsonValue(value.projection));
+}
+
+function isRuntimeTarget(value: unknown): boolean {
+  if (!isRecord(value) || !hasString(value, "scope")) return false;
+  if (value.scope === "instance") return hasOnlyKeys(value, ["scope"]);
+  if (value.scope === "agent") {
+    return hasOnlyKeys(value, ["scope", "platformAgentId"])
+      && hasString(value, "platformAgentId");
+  }
+  return value.scope === "conversation"
+    && hasOnlyKeys(value, ["scope", "platformAgentId", "conversationId"])
+    && hasString(value, "platformAgentId")
+    && hasString(value, "conversationId");
+}
+
+function isOperationStateCompatible(status: string, effectState: string, terminal: boolean): boolean {
+  switch (status) {
+    case "queued": return effectState === "queued" && !terminal;
+    case "running": return effectState === "running" && !terminal;
+    case "runtime_committed":
+    case "projection_pending":
+      return effectState === "committed" && !terminal;
+    case "succeeded": return effectState === "committed" && terminal;
+    case "failed": return effectState === "failed" && terminal;
+    case "cancelled": return effectState === "cancelled" && terminal;
+    case "expired": return effectState === "expired" && terminal;
+    case "outcome_unknown": return effectState === "outcome_unknown" && terminal;
+    case "projection_blocked": return effectState === "committed";
+    default: return false;
+  }
 }
 
 function hasDataForType(type: RealtimeEventType, scope: Record<string, unknown>, data: Record<string, unknown>): boolean {
@@ -276,12 +376,23 @@ function hasDataForType(type: RealtimeEventType, scope: Record<string, unknown>,
     case "agent.updated":
       return hasOnlyKeys(data, ["agentId", "status", "revision"])
         && hasString(scope, "agentId") && data.agentId === scope.agentId && hasString(data, "status") && isDecimalString(data.revision);
+    case "inbox.conversation.available":
+    case "inbox.conversation.unavailable":
+      return hasOnlyKeys(data, ["conversationId"]) && hasString(data, "conversationId")
+        && scope.conversationId === undefined;
     case "operation.started":
     case "operation.progress":
     case "operation.terminal":
-      return hasOnlyKeys(data, type === "operation.progress" ? ["operation", "progress"] : ["operation"])
-        && hasString(scope, "operationId") && isOperationSnapshot(data.operation) && data.operation.id === scope.operationId
-        && (type !== "operation.progress" || data.progress === undefined || (Number.isSafeInteger(data.progress) && (data.progress as number) >= 0 && (data.progress as number) <= 100));
+      return hasOnlyKeys(data, ["operation"])
+        && hasString(scope, "operationId") && hasString(scope, "instanceId")
+        && isOperationSnapshot(data.operation)
+        && data.operation.id === scope.operationId
+        && data.operation.instanceId === scope.instanceId;
+    case "runtime.dispatch.failed":
+      return hasOnlyKeys(scope, ["tenantId", "conversationId", "messageId"])
+        && hasString(scope, "conversationId")
+        && hasString(scope, "messageId")
+        && isRuntimeDispatchFailureData(data);
     case "typing.started":
     case "typing.stopped":
       return hasOnlyKeys(data, ["identityId"]) && hasString(scope, "conversationId") && hasString(data, "identityId");
@@ -299,17 +410,52 @@ export function validateRealtimeEvent(value: unknown): AnyRealtimeEventV1 {
   if (!isRecord(value.scope) || !hasString(value.scope, "tenantId")) {
     throw new RealtimeEventValidationError("scope.tenantId is required");
   }
+  if (value.type === "runtime.dispatch.failed" && (
+    !hasOnlyKeys(value, [
+      "schemaVersion", "eventId", "type", "scope", "actor",
+      "ordering", "correlation", "occurredAt", "data",
+    ])
+    || !isRecord(value.actor)
+    || !hasOnlyKeys(value.actor, ["kind", "id"])
+    || value.actor.kind !== "service"
+    || value.actor.id !== "message-service"
+  )) {
+    throw new RealtimeEventValidationError("runtime dispatch actor/envelope is invalid");
+  }
   if (!isRecord(value.actor) || !hasString(value.actor, "id") || !ACTOR_KIND_SET.has(String(value.actor.kind))) {
     throw new RealtimeEventValidationError("actor.kind and actor.id are required");
   }
   if (!isRecord(value.ordering) || !/^\d+$/.test(String(value.ordering.streamSequence ?? ""))) {
     throw new RealtimeEventValidationError("ordering.streamSequence must be a decimal integer");
   }
+  if (value.ordering.messageOffset !== undefined && !isDecimalString(value.ordering.messageOffset)) throw new RealtimeEventValidationError("ordering.messageOffset must be a decimal integer");
+  if (["message.created", "message.delta", "message.updated", "message.terminal"].includes(String(value.type))
+    && !isDecimalString(value.ordering.messageOffset)) {
+    throw new RealtimeEventValidationError("ordering.messageOffset is required for message events");
+  }
   if (value.ordering.completeness !== "full" && value.ordering.completeness !== "delta") {
     throw new RealtimeEventValidationError("ordering.completeness must be full or delta");
   }
-  if (!isRecord(value.correlation)) throw new RealtimeEventValidationError("correlation is required");
-  if (!hasString(value, "occurredAt") || Number.isNaN(Date.parse(value.occurredAt as string))) {
+  if (value.type === "runtime.dispatch.failed" && (
+    !hasOnlyKeys(value.ordering, ["streamSequence", "completeness"])
+    || value.ordering.streamSequence !== "0"
+    || value.ordering.completeness !== "delta"
+  )) {
+    throw new RealtimeEventValidationError("runtime dispatch ordering must be ephemeral");
+  }
+  if (!isRecord(value.correlation) || !hasOnlyKeys(value.correlation, [
+    "requestId", "correlationId", "causationId", "traceId", "idempotencyKeyHash",
+  ]) || !Object.values(value.correlation).every(
+    (item) => typeof item === "string" && item.length > 0,
+  )) {
+    throw new RealtimeEventValidationError("correlation values must be exact non-empty strings");
+  }
+  if (value.type === "runtime.dispatch.failed" && !hasOnlyKeys(value.correlation, [
+    "requestId", "correlationId", "causationId", "traceId", "idempotencyKeyHash",
+  ])) {
+    throw new RealtimeEventValidationError("runtime dispatch correlation is invalid");
+  }
+  if (!isRFC3339(value.occurredAt)) {
     throw new RealtimeEventValidationError("occurredAt must be an RFC3339 timestamp");
   }
   if (!isRecord(value.data) || !hasDataForType(value.type as RealtimeEventType, value.scope, value.data)) {

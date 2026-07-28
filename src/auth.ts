@@ -27,6 +27,8 @@ import { randomUUID } from "node:crypto";
 
 import type { TokenProvider, TokenResponse } from "./types.js";
 
+export type { TokenProvider, TokenResponse } from "./types.js";
+
 /**
  * Minimal identity contract required by the token provider.
  *
@@ -136,9 +138,6 @@ export function createTokenProvider(
       serviceUrl: typeof raw.service_url === "string" ? raw.service_url : undefined,
       identityId: String(raw.principal_id ?? identityId),
       expiresAt: typeof raw.expires_at === "number" ? raw.expires_at : 0,
-      channels: Array.isArray(raw.channels)
-        ? (raw.channels.filter((c) => typeof c === "string") as string[])
-        : undefined,
     };
   };
 }

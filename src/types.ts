@@ -403,8 +403,6 @@ export interface TokenResponse {
   identityId: string;
   /** Unix epoch seconds. */
   expiresAt: number;
-  /** Optional pre-subscribed private channels. */
-  channels?: string[];
 }
 
 /**

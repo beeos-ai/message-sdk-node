@@ -1,29 +1,14 @@
-/** Node entrypoint retains the 1.x MessageClient compatibility surface. */
-export {
-  ConversationSubscription,
-  ConversationsAPI,
-  IdentitiesAPI,
-  MessageClient,
-  MessagesAPI,
-} from "./client.js";
+/** Node runtime entrypoint; its MessageClient API is identical on every platform. */
+export { createMessageClient } from "./unified-client.js";
+export type { MessageClient } from "./unified-client.js";
+export type * from "./facade/contracts.js";
+export { createNodeMessageClientComposition } from "./node-runtime.js";
 export type {
-  ConnectOptions,
-  ConversationSubscriptionEvents,
-  MessageClientEvents,
-  MessageClientOptions,
-  RequestOptions,
-} from "./client.js";
-export {
-  createCentrifugoRealtimeTransport,
-  createMessageClient,
-  createRuntimeBindingMessageClient,
-  CentrifugoRealtimeTransport,
-  MessageClientFacade,
-  RuntimeBindingMessageClient,
-} from "./facade/index.js";
-export {
-  createNodeCentrifugeClientFactory,
-  createNodeCentrifugoRealtimeTransport,
-} from "./facade/centrifugo-node.js";
-export type * from "./facade/index.js";
-export * from "./protocol/index.js";
+  NodeMessageClientComposition,
+  NodeMessageClientOptions,
+  NodeMessageServiceTransport,
+} from "./node-runtime.js";
+export type {
+  RuntimeDeliveryAuthorityLease,
+  RuntimeDeliveryAuthorityPort,
+} from "./runtime-delivery.js";

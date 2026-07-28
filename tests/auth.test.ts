@@ -94,7 +94,8 @@ describe("createTokenProvider", () => {
       token: "tok-123",
       centrifugo_url: "wss://msg/ws",
       service_url: "https://msg.example.com",
-      channels: ["personal:instance-7"],
+      // Raw server routing metadata, when present, is deliberately ignored.
+      channels: ["server-owned-private-scope"],
       principal_id: "instance-7",
       expires_at: 9999,
     };
@@ -121,8 +122,8 @@ describe("createTokenProvider", () => {
       serviceUrl: "https://msg.example.com",
       identityId: "instance-7",
       expiresAt: 9999,
-      channels: ["personal:instance-7"],
     });
+    expect(tok).not.toHaveProperty("channels");
 
     expect(captured.url).toBe("https://agent-gw.beeos.ai/api/v1/messaging/token");
     expect(captured.init?.method).toBe("POST");
@@ -144,7 +145,6 @@ describe("createTokenProvider", () => {
         JSON.stringify({
           token: "t",
           centrifugo_url: "wss://x",
-          channels: [],
           principal_id: "p",
           expires_at: 1,
         }),

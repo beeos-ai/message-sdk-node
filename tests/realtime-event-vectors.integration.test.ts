@@ -42,8 +42,8 @@ describe("RealtimeEventV1 canonical backend vectors", () => {
   }
 
   it("contains the complete v1 acceptance and rejection sets", () => {
-    expect(vectors.valid).toHaveLength(19);
-    expect(vectors.invalid).toHaveLength(4);
+    expect(vectors.valid).toHaveLength(20);
+    expect(vectors.invalid).toHaveLength(9);
   });
 
   for (const event of vectors.valid) {

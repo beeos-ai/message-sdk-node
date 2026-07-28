@@ -7,6 +7,15 @@ export interface RealtimeCursor {
   projectionEpoch?: string;
 }
 
+export type RealtimeDeliveryAudience =
+  | { readonly kind: "private-control" }
+  | { readonly kind: "conversation"; readonly conversationId: string };
+
+export interface ScopedRealtimeCursors {
+  readonly privateControl?: RealtimeCursor;
+  readonly conversations: Readonly<Record<string, RealtimeCursor>>;
+}
+
 export type RecoveryDecision =
   | { action: "apply"; cursor: RealtimeCursor }
   | { action: "ignore_stale" }
@@ -31,6 +40,32 @@ export class RecoveryOwnership {
   }
 }
 
+export function evaluateScopedRealtimeEvent(
+  cursors: ScopedRealtimeCursors,
+  event: AnyRealtimeEventV1,
+  audience?: RealtimeDeliveryAudience,
+): RecoveryDecision {
+  return evaluateRealtimeEvent(cursorForAudience(cursors, audience ?? inferredAudience(event)), event);
+}
+
+export function realtimeScopeKey(audience: RealtimeDeliveryAudience): string {
+  return audience.kind === "private-control"
+    ? "private-control"
+    : `conversation:${audience.conversationId}`;
+}
+
+export function withScopedRealtimeCursor(
+  cursors: ScopedRealtimeCursors,
+  audience: RealtimeDeliveryAudience,
+  cursor: RealtimeCursor,
+): ScopedRealtimeCursors {
+  if (audience.kind === "conversation") return {
+    ...cursors,
+    conversations: { ...cursors.conversations, [audience.conversationId]: cursor },
+  };
+  return { ...cursors, privateControl: cursor };
+}
+
 export function evaluateRealtimeEvent(cursor: RealtimeCursor | undefined, event: AnyRealtimeEventV1): RecoveryDecision {
   const next = cursorFromOrdering(event.ordering);
   if (!cursor) return { action: "apply", cursor: next };
@@ -50,6 +85,18 @@ export function evaluateRealtimeEvent(cursor: RealtimeCursor | undefined, event:
     return { action: "rebase", reason: "sequence_gap" };
   }
   return { action: "apply", cursor: next };
+}
+
+function cursorForAudience(cursors: ScopedRealtimeCursors, audience: RealtimeDeliveryAudience): RealtimeCursor | undefined {
+  return audience.kind === "private-control"
+    ? cursors.privateControl
+    : cursors.conversations[audience.conversationId];
+}
+
+function inferredAudience(event: AnyRealtimeEventV1): RealtimeDeliveryAudience {
+  return event.scope.conversationId
+    ? { kind: "conversation", conversationId: event.scope.conversationId }
+    : { kind: "private-control" };
 }
 
 function cursorFromOrdering(ordering: RealtimeOrdering): RealtimeCursor {
