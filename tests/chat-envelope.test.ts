@@ -144,6 +144,31 @@ describe("extractChatPrompt — chat_message", () => {
     expect(out!.sessionKey).toBe(`agent:${LOCAL_AGENT_ID}:a2a:fixed-suffix`);
   });
 
+
+  it("reads download_url from content.attachments[] (gateway dual-write / chatinvoke)", () => {
+    const out = extractChatPrompt(
+      chat(
+        {
+          message: "look",
+          attachments: [
+            { file_id: "f1", download_url: "https://files.example/cat.png" },
+            { file_id: "f2", url: "https://files.example/dog.png" },
+          ],
+        },
+        { type: "chat_message", conversationId: "ch-1" },
+      ),
+      {
+        source: "chat_message",
+        localAgentId: LOCAL_AGENT_ID,
+        generateSuffix: FIXED_SUFFIX,
+      },
+    );
+    expect(out!.files).toEqual([
+      "https://files.example/cat.png",
+      "https://files.example/dog.png",
+    ]);
+  });
+
   it("respects an explicit session_key from legacy callers", () => {
     const out = extractChatPrompt(
       chat(

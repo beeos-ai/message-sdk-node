@@ -215,6 +215,16 @@ function extractFiles(content: Record<string, unknown>): string[] {
     }
   }
 
+  const attachmentsField = content.attachments;
+  if (Array.isArray(attachmentsField)) {
+    for (const item of attachmentsField) {
+      if (!item || typeof item !== "object") continue;
+      const rec = item as Record<string, unknown>;
+      const url = pickString(rec.download_url, rec.url, rec.uri);
+      if (url) out.push(url);
+    }
+  }
+
   return out;
 }
 
