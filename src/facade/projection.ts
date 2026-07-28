@@ -24,6 +24,7 @@ const EMPTY_SNAPSHOT: DomainProjectionSnapshot = Object.freeze({
 export interface ConversationHydrationCommit {
   readonly conversation: ConversationProjection;
   readonly messages: readonly MessageProjection[];
+  readonly historyBoundaryOffset: string;
   readonly latestOffset: string;
 }
 
@@ -72,6 +73,7 @@ export class ProjectionEngine {
         [commit.conversation.id]: Object.freeze({
           conversationId: commit.conversation.id,
           historyGeneration: commit.conversation.historyGeneration,
+          historyBoundaryOffset: commit.historyBoundaryOffset,
           conversationRevision: commit.conversation.revision,
           latestOffset: commit.latestOffset,
           projectionRevision: nextProjectionRevision(
@@ -440,6 +442,7 @@ function isIdenticalHydration(
     || current.historyGeneration !== commit.conversation.historyGeneration
     || current.revision !== commit.conversation.revision
     || proof.historyGeneration !== commit.conversation.historyGeneration
+    || proof.historyBoundaryOffset !== commit.historyBoundaryOffset
     || proof.conversationRevision !== commit.conversation.revision
     || proof.latestOffset !== commit.latestOffset
   ) return false;

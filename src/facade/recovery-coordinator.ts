@@ -83,10 +83,15 @@ export class RecoveryCoordinator {
         if (attempt === this.maxAttempts) throw new HistoryGenerationChangedError(conversationId);
         continue;
       }
+      if (page.historyGeneration !== g2.historyGeneration) {
+        if (attempt === this.maxAttempts) throw new HistoryGenerationChangedError(conversationId);
+        continue;
+      }
       const messages = page.messages.filter((message) => message.historyGeneration === g2.historyGeneration);
       const commit: ConversationHydrationCommit = {
         conversation: g2,
         messages,
+        historyBoundaryOffset: page.historyBoundaryOffset,
         latestOffset: page.latestOffset,
       };
       return commit;
@@ -121,17 +126,39 @@ export class RecoveryCoordinator {
 
   private async readAllMessages(conversationId: string): Promise<{
     messages: MessageProjection[];
+    historyGeneration: string;
+    historyBoundaryOffset: string;
     latestOffset: string;
   }> {
     const messages: MessageProjection[] = [];
     let since: string | undefined;
+    let historyGeneration: string | undefined;
+    let historyBoundaryOffset: string | undefined;
     let latestOffset = "0";
     const seenCursors = new Set<string>();
     while (true) {
       const page: MessageListPage = await this.options.messages.listMessages(conversationId, since);
+      if (
+        historyGeneration !== undefined &&
+        (
+          page.historyGeneration !== historyGeneration ||
+          page.historyBoundaryOffset !== historyBoundaryOffset
+        )
+      ) {
+        throw new HistoryGenerationChangedError(conversationId);
+      }
+      historyGeneration ??= page.historyGeneration;
+      historyBoundaryOffset ??= page.historyBoundaryOffset;
       messages.push(...page.messages);
       latestOffset = maxDecimal(latestOffset, page.latestOffset);
-      if (!page.hasMore) return { messages, latestOffset };
+      if (!page.hasMore) {
+        return {
+          messages,
+          historyGeneration,
+          historyBoundaryOffset,
+          latestOffset,
+        };
+      }
       if (!page.nextSince || page.nextSince === since || seenCursors.has(page.nextSince)) {
         throw new Error("message pagination did not advance");
       }

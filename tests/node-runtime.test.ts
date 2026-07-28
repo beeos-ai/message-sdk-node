@@ -95,6 +95,8 @@ describe("Node Message Service composition route matrix", () => {
               updated_at: "2026-07-28T00:00:00.123457Z",
             },
           ],
+          history_generation: 4,
+          history_boundary_offset: 3,
           latest_offset: 9,
           next_cursor: "page-2",
           has_more: true,
@@ -116,7 +118,13 @@ describe("Node Message Service composition route matrix", () => {
       `${base}/api/v2/identities/agent%201/conversations?state=closed`,
     );
     expect(requests[3]).toBe(`${base}/api/v2/conversations/c1/messages?cursor=page-1`);
-    expect(page).toMatchObject({ latestOffset: "9", nextSince: "page-2", hasMore: true });
+    expect(page).toMatchObject({
+      historyGeneration: "4",
+      historyBoundaryOffset: "3",
+      latestOffset: "9",
+      nextSince: "page-2",
+      hasMore: true,
+    });
     expect(BigInt(page.messages[1].revision)).toBeGreaterThan(BigInt(page.messages[0].revision));
     expect(page.messages[0]).toMatchObject({
       senderId: "agent-a",

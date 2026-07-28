@@ -74,6 +74,8 @@ export interface OperationProjection {
 export interface ConversationHydrationProof {
   readonly conversationId: string;
   readonly historyGeneration: string;
+  /** Durable lower fence committed by the latest history clear. */
+  readonly historyBoundaryOffset: string;
   readonly conversationRevision: string;
   readonly latestOffset: string;
   /**
@@ -101,6 +103,8 @@ export interface ConversationListPage {
 
 export interface MessageListPage {
   readonly messages: readonly MessageProjection[];
+  readonly historyGeneration: string;
+  readonly historyBoundaryOffset: string;
   readonly latestOffset: string;
   readonly nextSince?: string;
   readonly hasMore: boolean;

@@ -416,6 +416,7 @@ describe("React Native Gateway composition", () => {
         success: true,
         data: {
           historyGeneration: "1",
+          historyBoundaryOffset: "0",
           latestOffset: "1",
           hasMore: false,
           messages: [{
@@ -436,6 +437,32 @@ describe("React Native Gateway composition", () => {
     composition.conversationRoutes!.bindConversation("c1", "agent-a");
     await expect(composition.messageQuery.listMessages("c1"))
       .rejects.toThrow("foreign conversation");
+  });
+
+  it("keeps Gateway history boundary separate from the latest message offset", async () => {
+    const composition = createReactNativeMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      accessTokenProvider: async () => "access-token",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      fetch: async () => json({
+        success: true,
+        data: {
+          historyGeneration: "4",
+          history_boundary_offset: "3",
+          latestOffset: "9",
+          hasMore: false,
+          messages: [],
+        },
+      }),
+    });
+    composition.conversationRoutes!.bindConversation("c1", "agent-a");
+    const page = await composition.messageQuery.listMessages("c1");
+    expect(page).toMatchObject({
+      historyGeneration: "4",
+      historyBoundaryOffset: "3",
+      latestOffset: "9",
+      hasMore: false,
+    });
   });
 
   it("pins currentPrincipal to the token response and hides raw subscribe/publish", async () => {
