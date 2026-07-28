@@ -1,8 +1,8 @@
 /**
  * `chat_message` / `agent_request` content adapter.
  *
- * BeeOS L0 AgentInvocationService publishes `chat_message` messages
- * to a target agent's personal Centrifugo channel. The content shape
+ * BeeOS L0 AgentInvocationService durably publishes `chat_message` messages
+ * to the target agent's authorized inbox/conversation timeline. The content shape
  * is defined in `backend/pkg/chatinvoke/invoker.go` (`buildChatPayload`):
  *
  *   {
@@ -29,7 +29,12 @@
  *   import { extractChatPrompt, A2A_PROTOCOL_FIELDS } from "@beeos-ai/message-sdk/chat-envelope";
  */
 
-import type { Message } from "./types.js";
+interface ChatEnvelopeMessage {
+  readonly id?: string;
+  readonly type: string;
+  readonly conversationId?: string;
+  readonly content?: unknown;
+}
 
 /**
  * Output shape — fixed surface. Adding fields is a breaking change.
@@ -114,7 +119,7 @@ export const A2A_PROTOCOL_FIELDS: readonly string[] = Object.freeze([
  * those are L1 transport metadata, not agent-prompt input.
  */
 export function extractChatPrompt(
-  msg: Message,
+  msg: ChatEnvelopeMessage,
   opts: ExtractChatPromptOptions = {},
 ): ChatPrompt | null {
   const content = (msg.content ?? {}) as Record<string, unknown>;

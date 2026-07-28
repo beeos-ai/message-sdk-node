@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "beeos.runtime-dispatch.v1",
+  "revision": "beeos.runtime-dispatch.v1",
+  "title": "BeeOS Runtime Dispatch Contract V1",
+  "oneOf": [
+    { "$ref": "#/$defs/realtimeEvent" },
+    { "$ref": "#/$defs/runtimeDispatch" }
+  ],
+  "$defs": {
+    "failedCode": {
+      "enum": [
+        "runtime_target_invalid",
+        "runtime_request_invalid",
+        "runtime_rejected",
+        "runtime_unavailable"
+      ]
+    },
+    "runtimeDispatch": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "const": "accepted" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "code"],
+          "properties": {
+            "status": { "const": "failed" },
+            "code": { "$ref": "#/$defs/failedCode" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "code"],
+          "properties": {
+            "status": { "const": "unconfirmed" },
+            "code": { "const": "delivery_unconfirmed" }
+          }
+        }
+      ]
+    },
+    "correlation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requestId": { "type": "string", "minLength": 1 },
+        "correlationId": { "type": "string", "minLength": 1 },
+        "causationId": { "type": "string", "minLength": 1 },
+        "traceId": { "type": "string", "minLength": 1 },
+        "idempotencyKeyHash": { "type": "string", "minLength": 1 }
+      }
+    },
+    "realtimeEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "eventId",
+        "type",
+        "scope",
+        "actor",
+        "ordering",
+        "correlation",
+        "occurredAt",
+        "data"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "eventId": { "type": "string", "minLength": 1 },
+        "type": { "const": "runtime.dispatch.failed" },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tenantId", "conversationId", "messageId"],
+          "properties": {
+            "tenantId": { "type": "string", "minLength": 1 },
+            "conversationId": { "type": "string", "minLength": 1 },
+            "messageId": { "type": "string", "minLength": 1 }
+          }
+        },
+        "actor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "id"],
+          "properties": {
+            "kind": { "const": "service" },
+            "id": { "const": "message-service" }
+          }
+        },
+        "ordering": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["streamSequence", "completeness"],
+          "properties": {
+            "streamSequence": { "const": "0" },
+            "completeness": { "const": "delta" }
+          }
+        },
+        "correlation": { "$ref": "#/$defs/correlation" },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "data": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "code"],
+              "properties": {
+                "status": { "const": "failed" },
+                "code": { "$ref": "#/$defs/failedCode" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["status", "code"],
+              "properties": {
+                "status": { "const": "unconfirmed" },
+                "code": { "const": "delivery_unconfirmed" }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

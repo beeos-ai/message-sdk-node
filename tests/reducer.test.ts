@@ -11,7 +11,7 @@ import {
   type ApplyResult,
   type ReducedSnapshot,
   type WireFrame,
-} from "../src/index.js";
+} from "../src/reducer.js";
 
 // Shared cross-language conformance vectors (ADR-0025): the Go MS reducer,
 // Go SDK reducer, and this TS reducer must never silently diverge.
