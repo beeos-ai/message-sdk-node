@@ -7,6 +7,10 @@ export {
   createMessageServiceHttpTransport,
   MessageServiceHttpTransport,
 } from "./message-service-http.js";
+export {
+  createRuntimeBindingMessageClient,
+  RuntimeBindingMessageClient,
+} from "./runtime-binding.js";
 export type {
   AppStatePort,
   ConversationHydration,
@@ -46,3 +50,24 @@ export type {
   CentrifugoRealtimeTransportOptions,
   RealtimeAuthProvider,
 } from "./centrifugo-realtime.js";
+export type {
+  RuntimeBindingConnectionState,
+  RuntimeBindingConversation,
+  RuntimeBindingConversationPage,
+  RuntimeBindingDurableRecoveryPort,
+  RuntimeBindingIdentity,
+  RuntimeBindingListOpenConversationsInput,
+  RuntimeBindingListUnhandledMessagesInput,
+  RuntimeBindingMessage,
+  RuntimeBindingMessageClientOptions,
+  RuntimeBindingMessageClientSnapshot,
+  RuntimeBindingMessagePage,
+  RuntimeBindingRecoveryWake,
+  RuntimeBindingWakeEvent,
+  RuntimeBindingWakeListener,
+  RuntimeBindingWakeNotification,
+  RuntimeBindingWakeSession,
+  RuntimeBindingWakeTransportConnectInput,
+  RuntimeBindingWakeTransportPort,
+  RuntimeBindingWakeWatch,
+} from "./runtime-binding.js";

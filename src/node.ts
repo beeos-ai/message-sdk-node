@@ -16,8 +16,10 @@ export type {
 export {
   createCentrifugoRealtimeTransport,
   createMessageClient,
+  createRuntimeBindingMessageClient,
   CentrifugoRealtimeTransport,
   MessageClientFacade,
+  RuntimeBindingMessageClient,
 } from "./facade/index.js";
 export {
   createNodeCentrifugeClientFactory,
