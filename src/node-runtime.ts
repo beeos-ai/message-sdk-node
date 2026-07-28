@@ -322,6 +322,10 @@ class NodeMessageHttpAdapter {
     if (!generation) throw new Error("message list requires a preceding generation-fenced conversation read");
     return {
       messages: array(raw.messages).map(message),
+      historyGeneration: decimal(raw.history_generation ?? raw.historyGeneration),
+      historyBoundaryOffset: decimal(
+        raw.history_boundary_offset ?? raw.historyBoundaryOffset,
+      ),
       latestOffset: decimal(raw.latest_offset ?? raw.latestOffset),
       nextSince: optionalString(raw.next_cursor ?? raw.nextCursor),
       hasMore: Boolean(raw.has_more ?? raw.hasMore),

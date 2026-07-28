@@ -230,6 +230,10 @@ class GatewayHttpAdapter {
     const generation = decimal(raw.historyGeneration ?? raw.history_generation);
     return {
       messages: array(raw.messages).map((value) => message(value, conversationId, generation)),
+      historyGeneration: generation,
+      historyBoundaryOffset: decimal(
+        raw.historyBoundaryOffset ?? raw.history_boundary_offset,
+      ),
       latestOffset: decimal(
         raw.latestOffsetStr ?? raw.latest_offset_str ?? raw.latestOffset ?? raw.latest_offset,
       ),

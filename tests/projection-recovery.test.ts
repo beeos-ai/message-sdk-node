@@ -77,6 +77,7 @@ describe("ProjectionEngine", () => {
     expect(engine.commitHydration({
       conversation: conversation("1"),
       messages: [message("m1", "1", "1", "hello")],
+      historyBoundaryOffset: "0",
       latestOffset: "1",
     })).toBe(true);
     const committed = engine.getSnapshot();
@@ -148,6 +149,7 @@ describe("ProjectionEngine", () => {
     engine.commitHydration({
       conversation: conversation("1"),
       messages: [message("m1", "1", "1", "old")],
+      historyBoundaryOffset: "0",
       latestOffset: "1",
     });
     expect(engine.apply(event("conversation.updated", "2", "2", {
@@ -183,6 +185,7 @@ describe("ProjectionEngine", () => {
     engine.commitHydration({
       conversation: conversation("1"),
       messages: [message("m1", "1", "1", "中")],
+      historyBoundaryOffset: "0",
       latestOffset: "1",
     });
     expect(engine.apply(event("message.delta", "2", "1", {
@@ -215,12 +218,16 @@ describe("RecoveryCoordinator", () => {
           messageReads++;
           if (!since) return {
             messages: [message(`m-${messageReads}`, messageReads === 1 ? "1" : "2", "1")],
+            historyGeneration: messageReads === 1 ? "1" : "2",
+            historyBoundaryOffset: "0",
             latestOffset: "2",
             nextSince: "1",
             hasMore: true,
           };
           return {
             messages: [message(`m-${messageReads}`, messageReads <= 2 ? "1" : "2", "2")],
+            historyGeneration: messageReads <= 2 ? "1" : "2",
+            historyBoundaryOffset: "0",
             latestOffset: "2",
             hasMore: false,
           };
@@ -246,11 +253,52 @@ describe("RecoveryCoordinator", () => {
         getConversation: async () => conversation(String(++generation)),
       },
       messages: {
-        listMessages: async () => ({ messages: [], latestOffset: "0", hasMore: false }),
+        listMessages: async () => ({
+          messages: [],
+          historyGeneration: String(generation),
+          historyBoundaryOffset: "0",
+          latestOffset: "0",
+          hasMore: false,
+        }),
       },
       projection: engine,
     });
     await expect(coordinator.recoverConversation("c1")).rejects.toBeInstanceOf(HistoryGenerationChangedError);
     expect(engine.getSnapshot().conversations).toEqual({});
+  });
+
+  it("fails closed when durable history boundaries drift across message pages", async () => {
+    const engine = new ProjectionEngine();
+    const coordinator = new RecoveryCoordinator({
+      conversations: {
+        getConversation: async () => conversation("5"),
+      },
+      messages: {
+        listMessages: async (_id, since) => {
+          if (!since) {
+            return {
+              messages: [message("m1", "5", "6")],
+              historyGeneration: "5",
+              historyBoundaryOffset: "3",
+              latestOffset: "6",
+              nextSince: "6",
+              hasMore: true,
+            };
+          }
+          return {
+            messages: [message("m2", "5", "7")],
+            historyGeneration: "5",
+            historyBoundaryOffset: "4",
+            latestOffset: "7",
+            hasMore: false,
+          };
+        },
+      },
+      projection: engine,
+    });
+
+    await expect(coordinator.recoverConversation("c1"))
+      .rejects.toBeInstanceOf(HistoryGenerationChangedError);
+    expect(engine.getSnapshot().hydrationByConversation.c1).toBeUndefined();
   });
 });

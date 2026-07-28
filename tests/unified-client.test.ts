@@ -207,7 +207,13 @@ function composition(): {
       },
       messageQuery: {
         async listMessages() {
-          return { messages: [projectionMessage("m1")], latestOffset: "1", hasMore: false };
+          return {
+            messages: [projectionMessage("m1")],
+            historyGeneration: "1",
+            historyBoundaryOffset: "0",
+            latestOffset: "1",
+            hasMore: false,
+          };
         },
         async reconcileMessage() { calls.reconcile++; return undefined; },
       },
@@ -791,6 +797,8 @@ describe("UnifiedMessageClient", () => {
         state: "completed", historyGeneration: "3", offset: "8", revision: "9",
         createdAt: at, updatedAt: at,
       }],
+      historyGeneration: "3",
+      historyBoundaryOffset: "0",
       latestOffset: "8",
       hasMore: false,
     });
@@ -1071,6 +1079,8 @@ describe("UnifiedMessageClient", () => {
         createdAt: at,
         updatedAt: at,
       }],
+      historyGeneration: "1",
+      historyBoundaryOffset: "0",
       latestOffset: "1",
       hasMore: false,
     });
@@ -1135,6 +1145,8 @@ describe("UnifiedMessageClient", () => {
         createdAt: at,
         updatedAt: at,
       }],
+      historyGeneration: generation,
+      historyBoundaryOffset: "0",
       latestOffset: "1",
       hasMore: false,
     });

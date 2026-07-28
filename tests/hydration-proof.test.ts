@@ -23,12 +23,14 @@ describe("conversation hydration commit proof", () => {
         id: "c1", state: "open", historyGeneration: "1", revision: "7", updatedAt: at,
       },
       messages: [message()],
+      historyBoundaryOffset: "0",
       latestOffset: "9",
     });
     const committed = projection.getSnapshot();
     expect(committed.hydrationByConversation.c1).toEqual({
       conversationId: "c1",
       historyGeneration: "1",
+      historyBoundaryOffset: "0",
       conversationRevision: "7",
       latestOffset: "9",
       projectionRevision: "1",
@@ -40,6 +42,7 @@ describe("conversation hydration commit proof", () => {
         id: "c1", state: "open", historyGeneration: "1", revision: "7", updatedAt: at,
       },
       messages: [message()],
+      historyBoundaryOffset: "0",
       latestOffset: "9",
     })).toBe(false);
     expect(projection.getSnapshot()).toBe(committed);
@@ -103,5 +106,36 @@ describe("conversation hydration commit proof", () => {
     expect(projection.apply(cleared)).toBe(true);
     expect(projection.getSnapshot().hydrationByConversation.c1).toBeUndefined();
     expect(projection.getSnapshot().messages).toEqual({});
+  });
+
+  it("keeps the durable clear boundary separate from a growing latest offset", () => {
+    const projection = new ProjectionEngine();
+    projection.commitHydration({
+      conversation: {
+        id: "c1", state: "open", historyGeneration: "7", revision: "10", updatedAt: at,
+      },
+      messages: [message()],
+      historyBoundaryOffset: "4",
+      latestOffset: "9",
+    });
+    expect(projection.getSnapshot().hydrationByConversation.c1).toMatchObject({
+      historyGeneration: "7",
+      historyBoundaryOffset: "4",
+      latestOffset: "9",
+    });
+
+    projection.commitHydration({
+      conversation: {
+        id: "c1", state: "open", historyGeneration: "7", revision: "11", updatedAt: at,
+      },
+      messages: [message()],
+      historyBoundaryOffset: "4",
+      latestOffset: "10",
+    });
+    expect(projection.getSnapshot().hydrationByConversation.c1).toMatchObject({
+      historyGeneration: "7",
+      historyBoundaryOffset: "4",
+      latestOffset: "10",
+    });
   });
 });
