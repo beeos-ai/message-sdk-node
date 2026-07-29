@@ -3,13 +3,14 @@ import { UnifiedMessageStream } from "./message-stream.js";
 import {
   decodeRealtimeEvent,
   evaluateScopedRealtimeEvent,
+  realtimeScopeKey,
   RealtimeDedupe,
   withScopedRealtimeCursor,
   type AnyRealtimeEventV1,
   type RealtimeDeliveryAudience,
   type ScopedRealtimeCursors,
 } from "./protocol/index.js";
-import { ConversationWatchRegistry } from "./facade/watch-registry.js";
+import { ConversationWatchRegistry, type DirectorySubscriptionFailure } from "./facade/watch-registry.js";
 import { ProjectionEngine } from "./facade/projection.js";
 import { RecoveryCoordinator } from "./facade/recovery-coordinator.js";
 import type {
@@ -98,6 +99,9 @@ export interface MessageClient {
   subscribe(listener: StoreListener): () => void;
 }
 
+const DIRECTORY_RETRY_BASE_MS = 1_000;
+const DIRECTORY_RETRY_MAX_MS = 30_000;
+
 /**
  * The one MessageClient implementation. Platform composition supplies narrow
  * HTTPS/WSS/storage/lifecycle ports; feature code only receives this object.
@@ -131,6 +135,8 @@ export class UnifiedMessageClient implements MessageClient {
   private recoveryDirty = false;
   private privateRecoveryPromise?: Promise<void>;
   private privateDirectoryRefreshRequested = false;
+  private directoryRetryAttempt = 0;
+  private directoryRetryTimer?: ReturnType<typeof setTimeout>;
   private readonly bufferedInbound: Array<{
     raw: unknown;
     audience: RealtimeDeliveryAudience;
@@ -218,6 +224,7 @@ export class UnifiedMessageClient implements MessageClient {
 
   async disconnect(): Promise<void> {
     this.requestedConnection = false;
+    this.cancelDirectoryRetry();
     this.stopLifecycle?.();
     this.stopLifecycle = undefined;
     const inflight = this.connectPromise;
@@ -507,7 +514,10 @@ export class UnifiedMessageClient implements MessageClient {
       return;
     }
     const decision = evaluateScopedRealtimeEvent(this.scopedCursors, event, audience);
-    if (decision.action === "ignore_stale") return;
+    if (decision.action === "ignore_stale") {
+      this.reportRealtimeDrop(event, audience);
+      return;
+    }
     if (decision.action === "rebase") {
       if (this.recoveryBatching) {
         this.failInbound(`buffered realtime gap requires reconnect: ${decision.reason}`);
@@ -581,6 +591,99 @@ export class UnifiedMessageClient implements MessageClient {
     }
   }
 
+  /**
+   * Reports conversations the directory could not subscribe and schedules one
+   * retry for the whole directory.
+   *
+   * A refused conversation is not necessarily refused forever: authorization
+   * can be restored, and a transient server error looks identical at this
+   * layer. Retrying re-runs discovery, so a conversation that genuinely
+   * disappeared drops out of the directory instead of being retried forever.
+   * Backoff is exponential because the common cause — a conversation the
+   * caller is no longer a member of — persists until something upstream
+   * changes, and a tight loop would spend the connection on it.
+   */
+  private reportDirectorySubscriptionFailures(
+    failed: readonly DirectorySubscriptionFailure[],
+  ): void {
+    if (failed.length === 0) {
+      this.directoryRetryAttempt = 0;
+      this.cancelDirectoryRetry();
+      return;
+    }
+    const sink = this.composition.onDirectorySubscribeFailure;
+    if (sink) {
+      for (const failure of failed) {
+        try {
+          sink({
+            conversationId: failure.conversationId,
+            attempt: this.directoryRetryAttempt + 1,
+            error: failure.error,
+          });
+        } catch {
+          // A diagnostic sink must never alter subscription behaviour.
+        }
+      }
+    }
+    this.scheduleDirectoryRetry();
+  }
+
+  private scheduleDirectoryRetry(): void {
+    if (this.directoryRetryTimer !== undefined) return;
+    if (!this.requestedConnection) return;
+    const delay = Math.min(
+      DIRECTORY_RETRY_BASE_MS * 2 ** this.directoryRetryAttempt,
+      DIRECTORY_RETRY_MAX_MS,
+    );
+    this.directoryRetryAttempt++;
+    this.directoryRetryTimer = setTimeout(() => {
+      this.directoryRetryTimer = undefined;
+      if (!this.requestedConnection) return;
+      this.requestPrivateDirectoryRefresh();
+    }, delay);
+    // A pending retry must never hold a Node process open.
+    this.directoryRetryTimer.unref?.();
+  }
+
+  private cancelDirectoryRetry(): void {
+    if (this.directoryRetryTimer === undefined) return;
+    clearTimeout(this.directoryRetryTimer);
+    this.directoryRetryTimer = undefined;
+  }
+
+  /**
+   * Publishes the cursor comparison that rejected an event. Both sides of the
+   * comparison are included because "stale" is only meaningful against the
+   * cursor it lost to.
+   */
+  private reportRealtimeDrop(
+    event: AnyRealtimeEventV1,
+    audience: RealtimeDeliveryAudience,
+  ): void {
+    const sink = this.composition.onRealtimeDrop;
+    if (!sink) return;
+    const scope = realtimeScopeKey(audience);
+    const previous = audience.kind === "private-control"
+      ? this.scopedCursors.privateControl
+      : this.scopedCursors.conversations[audience.conversationId];
+    try {
+      sink({
+        reason: "ignore_stale",
+        eventId: event.eventId,
+        eventType: event.type,
+        scope,
+        conversationId: event.scope.conversationId,
+        messageId: event.scope.messageId,
+        incomingStreamSequence: event.ordering.streamSequence,
+        previousStreamSequence: previous?.streamSequence,
+        incomingEntityRevision: event.ordering.entityRevision,
+        previousEntityRevision: previous?.entityRevision,
+      });
+    } catch {
+      // A diagnostic sink must never alter delivery behaviour.
+    }
+  }
+
   private handleRealtimeState(state: RealtimeConnectionState): void {
     if (state === "disconnected" || state === "reconnecting") this.transportInterrupted = true;
     if (state !== "connected") this.setConnection(state);
@@ -613,10 +716,15 @@ export class UnifiedMessageClient implements MessageClient {
         this.privateDirectoryRefreshRequested = false;
         if (this.composition.privateConversationDirectoryQuery) {
           const conversations = await this.recovery.discoverPrivateDirectory();
-          await this.watches.setDirectoryConversations(
+          const { subscribed, failed } = await this.watches.setDirectoryConversations(
             conversations.map((conversation) => conversation.id),
           );
-          await this.recovery.recoverPrivateDirectoryProjection(conversations);
+          this.reportDirectorySubscriptionFailures(failed);
+          // Hydrating a conversation the SDK could not subscribe would seed the
+          // projection with a snapshot nothing will ever update again.
+          await this.recovery.recoverPrivateDirectoryProjection(
+            conversations.filter((conversation) => subscribed.has(conversation.id)),
+          );
         } else {
           await this.watches.reauthorizeAll();
           await this.watches.recoverAll();
