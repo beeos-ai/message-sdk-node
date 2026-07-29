@@ -25,6 +25,11 @@ export interface RuntimeDeliveryAuthorityPort {
  * Node durable runtime delivery. It owns the HTTP claim lifecycle; WSS may
  * wake a caller, but never becomes the command truth source.
  */
+/** Throttle floor for lease-starvation reporting. The loop re-evaluates the
+ * lease every idleDelayMs (500ms default), so unthrottled reporting would be
+ * two events a second for the entire outage. */
+const leaseStarvationReportIntervalMs = 30_000;
+
 export class NodeRuntimeDeliveryPort implements RuntimeDeliveryPort {
   constructor(
     private readonly origin: RuntimeDeliveryOriginPort,
@@ -54,6 +59,8 @@ class NodeRuntimeDeliveryConsumer implements RuntimeDeliveryConsumer {
     expiryTimer: ReturnType<typeof setTimeout>;
   }>();
   private consecutiveRenewFailures = 0;
+  private leaseStarvedSince?: number;
+  private leaseStarvationReportedAt = 0;
 
   constructor(
     private readonly origin: RuntimeDeliveryOriginPort,
@@ -120,9 +127,11 @@ class NodeRuntimeDeliveryConsumer implements RuntimeDeliveryConsumer {
       while (!signal.aborted) {
         const lease = this.authority.currentLease();
         if (!lease) {
+          this.reportLeaseStarvation();
           await delay(this.options.idleDelayMs ?? 500, signal);
           continue;
         }
+        this.reportLeaseRestored();
         if (leaseExpired(lease)) {
           for (const worker of this.workers.values()) worker.controller.abort();
           this.report(new Error("runtime delivery lease expired"));
@@ -396,6 +405,41 @@ class NodeRuntimeDeliveryConsumer implements RuntimeDeliveryConsumer {
   private report(error: unknown): void {
     try {
       this.options.onError?.(error);
+    } catch {
+      // Observers never own transport lifecycle.
+    }
+  }
+
+  private reportLeaseStarvation(): void {
+    const now = Date.now();
+    this.leaseStarvedSince ??= now;
+    const starvedForMs = now - this.leaseStarvedSince;
+    // Startup and lease renewal both cross this branch briefly. Reporting the
+    // first iteration would announce a 0ms starvation on every healthy boot.
+    if (starvedForMs < leaseStarvationReportIntervalMs) return;
+    if (this.leaseStarvationReportedAt &&
+        now - this.leaseStarvationReportedAt < leaseStarvationReportIntervalMs) {
+      return;
+    }
+    this.leaseStarvationReportedAt = now;
+    this.reportStarvation(starvedForMs, false);
+  }
+
+  private reportLeaseRestored(): void {
+    const starvedSince = this.leaseStarvedSince;
+    if (starvedSince === undefined) return;
+    this.leaseStarvedSince = undefined;
+    const reported = this.leaseStarvationReportedAt;
+    this.leaseStarvationReportedAt = 0;
+    // A window shorter than one report interval was never announced, so its
+    // recovery would be the only line in the log.
+    if (!reported) return;
+    this.reportStarvation(Date.now() - starvedSince, true);
+  }
+
+  private reportStarvation(starvedForMs: number, recovered: boolean): void {
+    try {
+      this.options.onLeaseStarvation?.({ starvedForMs, recovered });
     } catch {
       // Observers never own transport lifecycle.
     }

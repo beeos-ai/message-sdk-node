@@ -239,4 +239,97 @@ describe("Node durable runtime delivery", () => {
     await aborted;
     await consumer.stop();
   });
+
+  describe("lease starvation reporting", () => {
+    const cases = [
+      {
+        name: "stays silent below one report interval",
+        starvedMs: 29_000,
+        expected: [] as Array<{ recovered: boolean }>,
+      },
+      {
+        name: "reports once at the first full interval",
+        starvedMs: 31_000,
+        expected: [{ recovered: false }],
+      },
+      {
+        name: "reports once per interval while starved",
+        starvedMs: 91_000,
+        expected: [{ recovered: false }, { recovered: false }, { recovered: false }],
+      },
+    ];
+
+    for (const scenario of cases) {
+      it(scenario.name, async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("fetch", vi.fn(async () => {
+          throw new Error("a starved consumer must never reach the transport");
+        }));
+        const starved = authority(null);
+        const reports: Array<{ starvedForMs: number; recovered: boolean }> = [];
+        const consumer = new NodeRuntimeDeliveryPort(
+          { serviceOrigin: async () => origin },
+          starved.port,
+          "scoped-key",
+        ).consume({
+          onDelivery: async () => { throw new Error("no delivery is possible without a lease"); },
+          onLeaseStarvation: (input) => { reports.push(input); },
+          idleDelayMs: 500,
+          renewIntervalMs: 60_000,
+        });
+        consumer.start();
+        await vi.advanceTimersByTimeAsync(scenario.starvedMs);
+
+        expect(reports.map(({ recovered }) => ({ recovered }))).toEqual(scenario.expected);
+        for (const report of reports) {
+          expect(report.starvedForMs).toBeGreaterThanOrEqual(30_000);
+        }
+        await consumer.stop();
+      });
+    }
+
+    it("reports recovery only when the starvation was announced", async () => {
+      vi.useFakeTimers();
+      // A failing read is the only lease-present path that backs off through
+      // idleDelayMs. A blocking read would park the loop and an empty
+      // successful read would spin it without ever yielding to fake timers,
+      // so neither lets the test observe the lease going away again.
+      vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("read unavailable"); }));
+      const starved = authority(null);
+      const reports: Array<{ starvedForMs: number; recovered: boolean }> = [];
+      const consumer = new NodeRuntimeDeliveryPort(
+        { serviceOrigin: async () => origin },
+        starved.port,
+        "scoped-key",
+      ).consume({
+        onDelivery: async () => {},
+        onError: () => {},
+        onLeaseStarvation: (input) => { reports.push(input); },
+        idleDelayMs: 500,
+        blockMs: 1,
+        renewIntervalMs: 60_000,
+      });
+      consumer.start();
+
+      // A gap shorter than one interval is never announced, so its recovery
+      // would otherwise be the only line an operator ever sees.
+      await vi.advanceTimersByTimeAsync(5_000);
+      starved.set(lease());
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(reports).toEqual([]);
+
+      starved.set(null);
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(reports).toHaveLength(1);
+      expect(reports[0]).toMatchObject({ recovered: false });
+
+      starved.set(lease());
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(reports).toHaveLength(2);
+      expect(reports[1]).toMatchObject({ recovered: true });
+      expect(reports[1]!.starvedForMs).toBeGreaterThanOrEqual(45_000);
+
+      await consumer.stop();
+    });
+  });
 });
