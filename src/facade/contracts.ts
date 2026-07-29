@@ -299,6 +299,14 @@ export interface RuntimeDeliveryConsumeOptions {
     context: { readonly lease: RuntimeDeliveryLease; readonly signal: AbortSignal },
   ) => Promise<void>;
   readonly onError?: (error: unknown) => void;
+  /** A consumer whose authority has no lease issues no reads and raises no
+   * error, so a stalled runtime is bounded only by someone happening to look.
+   * Fires at most once per 30s while starved, and once more with `recovered`
+   * when a lease reappears. Starvation shorter than one interval is never
+   * reported, so startup and renewal gaps stay silent. */
+  readonly onLeaseStarvation?: (
+    input: { readonly starvedForMs: number; readonly recovered: boolean },
+  ) => void;
   readonly readCount?: number;
   readonly blockMs?: number;
   readonly idleDelayMs?: number;
