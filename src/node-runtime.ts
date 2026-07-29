@@ -558,6 +558,10 @@ function message(value: unknown): MessageProjection {
   const offset = decimal(raw.offset);
   const authoritativeGeneration = decimal(raw.history_generation ?? raw.historyGeneration);
   const updatedAt = requiredString(raw.updated_at ?? raw.updatedAt);
+  const replyTo = optionalString(
+    raw.reply_to ?? raw.replyTo ?? raw.in_reply_to ?? raw.inReplyTo,
+  );
+  const stopReason = optionalString(raw.stop_reason ?? raw.stopReason);
   return {
     id: requiredString(raw.id),
     conversationId: requiredString(raw.conversation_id ?? raw.conversationId),
@@ -565,7 +569,9 @@ function message(value: unknown): MessageProjection {
     type: requiredString(raw.type),
     body: optionalString(raw.body) ?? "",
     content: (raw.content ?? null) as JsonValue,
+    ...(replyTo ? { replyTo } : {}),
     state: messageState(raw.state),
+    ...(stopReason ? { stopReason } : {}),
     historyGeneration: authoritativeGeneration,
     offset,
     revision: raw.revision === undefined
