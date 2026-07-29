@@ -138,6 +138,39 @@ export composition infrastructure; feature code still receives only the root
 client. Protocol types and codecs are available from `/protocol`; agent
 authentication helpers and credential types are available from `/auth`.
 
+## Contract conformance
+
+The realtime wire contract has three independent definitions: the Message Service
+domain struct, the Go SDK struct, and this package's hand-written validator. They
+are kept in step by two corpora that Message Service owns:
+
+| Canonical file (backend repository) | Vendored copy here |
+| --- | --- |
+| `services/message/pkg/domain/realtime/testdata/realtime_event_v1_vectors.json` | `tests/testdata/realtime_event_v1_vectors.json` |
+| `services/message/pkg/domain/message/testdata/reducer_vectors.json` | `tests/testdata/reducer_vectors.json` |
+
+Both copies are exercised by `npm test` with no environment variable and no skip.
+`tests/vendored-vectors-drift.test.ts` additionally compares each copy byte for
+byte against the canonical file whenever a backend checkout is reachable — the
+meta-repository layout (`<meta>/backend` beside `<meta>/sdks/message-sdk-node`) and
+a flat side-by-side layout are both found automatically. Set
+`CANONICAL_REALTIME_EVENT_VECTORS` / `CANONICAL_REDUCER_VECTORS` to pick a specific
+backend worktree.
+
+Re-sync a copy after the canonical file changes:
+
+```bash
+cp ../../backend/services/message/pkg/domain/realtime/testdata/realtime_event_v1_vectors.json \
+   tests/testdata/realtime_event_v1_vectors.json
+```
+
+The realtime corpus separates four cases. `valid` and `invalid` must be accepted
+and rejected by every definition. `producerLenient` records payloads Message
+Service still accepts while this SDK rejects them — each one is a latent repeat of
+the outage where the server omitted `ordering.messageOffset` and every conforming
+consumer had to refuse the event. `consumerOnly` records events this SDK accepts
+that no producer emits yet, so the divergence stays a declared, tested fact.
+
 ## Requirements
 
 - Node.js 18 or later for the Node composition.

@@ -1,0 +1,2271 @@
+{
+  "contract": {
+    "schemaVersion": 1,
+    "eventTypes": [
+      "message.created",
+      "message.delta",
+      "message.updated",
+      "message.terminal",
+      "message.deleted",
+      "conversation.created",
+      "conversation.updated",
+      "conversation.deleted",
+      "conversation.member.added",
+      "conversation.member.removed",
+      "conversation.read.updated",
+      "conversation.unread.updated",
+      "instance.updated",
+      "agent.updated",
+      "operation.started",
+      "operation.progress",
+      "operation.terminal",
+      "runtime.dispatch.failed",
+      "typing.started",
+      "typing.stopped"
+    ],
+    "consumerOnlyEventTypes": [
+      "inbox.conversation.available",
+      "inbox.conversation.unavailable"
+    ]
+  },
+  "valid": [
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-created",
+      "type": "message.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "1",
+        "entityRevision": "1",
+        "messageOffset": "1",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:00Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 1,
+          "senderId": "u",
+          "type": "chat_message",
+          "body": "hello",
+          "state": "completed",
+          "content": {
+            "text": "hello"
+          },
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-delta",
+      "type": "message.delta",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "agent",
+        "id": "a"
+      },
+      "ordering": {
+        "streamSequence": "2",
+        "entityRevision": "2",
+        "messageOffset": "2",
+        "historyGeneration": "1",
+        "completeness": "delta"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:01Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 1,
+          "senderId": "a"
+        },
+        "bodyAppend": "x",
+        "bodyFrom": 0
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-updated",
+      "type": "message.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "3",
+        "entityRevision": "3",
+        "messageOffset": "3",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:02Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 1,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "x",
+          "state": "streaming",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:02Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-terminal",
+      "type": "message.terminal",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "4",
+        "entityRevision": "4",
+        "messageOffset": "4",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:03Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 1,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "done",
+          "state": "completed",
+          "content": {
+            "text": "done"
+          },
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:03Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-deleted",
+      "type": "message.deleted",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "5",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:04Z",
+      "data": {
+        "messageId": "m"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-conversation-created",
+      "type": "conversation.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "6",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:05Z",
+      "data": {
+        "conversation": {
+          "id": "c",
+          "state": "open",
+          "metadataVersion": "1",
+          "historyGeneration": "1",
+          "updatedAt": "2026-07-28T00:00:05Z"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-conversation-updated",
+      "type": "conversation.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "7",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:06Z",
+      "data": {
+        "conversation": {
+          "id": "c",
+          "title": "t",
+          "state": "open",
+          "metadataVersion": "2",
+          "historyGeneration": "1",
+          "updatedAt": "2026-07-28T00:00:06Z"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-conversation-deleted",
+      "type": "conversation.deleted",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "8",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:07Z",
+      "data": {
+        "conversationId": "c"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-member-added",
+      "type": "conversation.member.added",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "9",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:08Z",
+      "data": {
+        "member": {
+          "identityId": "u",
+          "role": "member",
+          "joinedAt": "2026-07-28T00:00:08Z"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-member-removed",
+      "type": "conversation.member.removed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "10",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:09Z",
+      "data": {
+        "member": {
+          "identityId": "u",
+          "role": "member",
+          "joinedAt": "2026-07-28T00:00:08Z"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-read",
+      "type": "conversation.read.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "11",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:10Z",
+      "data": {
+        "identityId": "u",
+        "lastReadMessageId": "m"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-unread",
+      "type": "conversation.unread.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "12",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:11Z",
+      "data": {
+        "identityId": "u",
+        "unreadCount": 0
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-instance",
+      "type": "instance.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "instanceId": "i"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "13",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:12Z",
+      "data": {
+        "instanceId": "i",
+        "status": "running"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-agent",
+      "type": "agent.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "agentId": "a"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "agent"
+      },
+      "ordering": {
+        "streamSequence": "14",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:13Z",
+      "data": {
+        "agentId": "a",
+        "status": "running",
+        "revision": "1"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-operation-started",
+      "type": "operation.started",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "15",
+        "completeness": "full",
+        "entityRevision": "2"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:14Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "2",
+          "cursor": "2",
+          "status": "running",
+          "effectState": "running",
+          "terminal": false,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "2"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-operation-progress",
+      "type": "operation.progress",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "16",
+        "completeness": "full",
+        "entityRevision": "3"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:15Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "3",
+          "cursor": "3",
+          "status": "running",
+          "effectState": "running",
+          "terminal": false,
+          "progress": {
+            "sequence": "1",
+            "phase": "running",
+            "current": 1,
+            "total": 2
+          },
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:15Z",
+          "revision": "3"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-operation-terminal",
+      "type": "operation.terminal",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "17",
+        "completeness": "full",
+        "entityRevision": "4"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:16Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "4",
+          "cursor": "4",
+          "status": "succeeded",
+          "effectState": "committed",
+          "terminal": true,
+          "result": {
+            "models": []
+          },
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:16Z",
+          "revision": "4"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-typing-started",
+      "type": "typing.started",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "18",
+        "completeness": "delta"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:17Z",
+      "data": {
+        "identityId": "u"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-typing-stopped",
+      "type": "typing.stopped",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "19",
+        "completeness": "delta"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:18Z",
+      "data": {
+        "identityId": "u"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-runtime-dispatch-failed",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "completeness": "delta"
+      },
+      "correlation": {
+        "correlationId": "corr-1"
+      },
+      "occurredAt": "2026-07-28T00:00:19Z",
+      "data": {
+        "status": "unconfirmed",
+        "code": "delivery_unconfirmed"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-created-offset-zero",
+      "type": "message.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "entityRevision": "0",
+        "messageOffset": "0",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:00Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 0,
+          "senderId": "a",
+          "type": "chat_message",
+          "body": "hello",
+          "state": "streaming",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-terminal-full-ordering",
+      "type": "message.terminal",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "21",
+        "entityRevision": "1753660800000000",
+        "messageOffset": "21",
+        "projectionUid": "projection-1",
+        "projectionEpoch": "3",
+        "historyGeneration": "2",
+        "completeness": "full",
+        "runtimeEpoch": "4"
+      },
+      "correlation": {
+        "requestId": "req-1",
+        "correlationId": "corr-1",
+        "causationId": "cause-1",
+        "traceId": "trace-1",
+        "idempotencyKeyHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "occurredAt": "2026-07-28T00:01:01Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 21,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "hi",
+          "state": "completed",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "2",
+          "replyTo": "request-1",
+          "stopReason": "end_turn",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "hi"
+            }
+          ],
+          "content": {
+            "text": "hi"
+          }
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-updated-parts",
+      "type": "message.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "22",
+        "entityRevision": "22",
+        "messageOffset": "22",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:02Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 22,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "par",
+          "state": "streaming",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1",
+          "parts": [
+            {
+              "kind": "text",
+              "text": "par",
+              "state": "streaming"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-delta-parts",
+      "type": "message.delta",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "agent",
+        "id": "a"
+      },
+      "ordering": {
+        "streamSequence": "23",
+        "entityRevision": "23",
+        "messageOffset": "23",
+        "historyGeneration": "1",
+        "completeness": "delta"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:03Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 23,
+          "senderId": "a"
+        },
+        "bodyAppend": "tial",
+        "bodyFrom": 3,
+        "parts": [
+          {
+            "kind": "text",
+            "text": "partial"
+          }
+        ]
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-terminal-refused",
+      "type": "message.terminal",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "24",
+        "entityRevision": "24",
+        "messageOffset": "24",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:04Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 24,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "hi",
+          "state": "refused",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1",
+          "stopReason": "refusal"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-message-terminal-cancelled",
+      "type": "message.terminal",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "25",
+        "entityRevision": "25",
+        "messageOffset": "25",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:05Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 25,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "hi",
+          "state": "cancelled",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1",
+          "stopReason": "cancelled"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-conversation-updated-closed",
+      "type": "conversation.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "26",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:06Z",
+      "data": {
+        "conversation": {
+          "id": "c",
+          "title": "closed thread",
+          "state": "closed",
+          "metadataVersion": "4",
+          "historyGeneration": "2",
+          "lastMessageId": "m",
+          "lastActivityAt": "2026-07-28T00:01:05Z",
+          "updatedAt": "2026-07-28T00:01:06Z"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-unread-nonzero",
+      "type": "conversation.unread.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "27",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:07Z",
+      "data": {
+        "identityId": "u",
+        "unreadCount": 3
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-read-without-pointer",
+      "type": "conversation.read.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "28",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:08Z",
+      "data": {
+        "identityId": "u"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-operation-started-agent-target",
+      "type": "operation.started",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "29",
+        "entityRevision": "29",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:09Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "agent",
+            "platformAgentId": "agent-1"
+          },
+          "method": "session/list",
+          "capability": "session",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "29",
+          "status": "queued",
+          "effectState": "queued",
+          "terminal": false,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "29"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-operation-progress-conversation-target",
+      "type": "operation.progress",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "30",
+        "entityRevision": "30",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:10Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "conversation",
+            "platformAgentId": "agent-1",
+            "conversationId": "c"
+          },
+          "method": "session/set_model",
+          "capability": "session",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "30",
+          "status": "projection_pending",
+          "effectState": "committed",
+          "terminal": false,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "30",
+          "cursor": "30",
+          "progress": {
+            "phase": "projecting",
+            "current": 1,
+            "total": 2
+          },
+          "projection": {
+            "state": "pending"
+          }
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-operation-terminal-failed",
+      "type": "operation.terminal",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "31",
+        "entityRevision": "31",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:11Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "31",
+          "status": "failed",
+          "effectState": "failed",
+          "terminal": true,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "31",
+          "error": {
+            "code": "runtime_rejected",
+            "message": "rejected"
+          }
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-operation-progress-projection-blocked",
+      "type": "operation.progress",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "32",
+        "entityRevision": "32",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:12Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "32",
+          "status": "projection_blocked",
+          "effectState": "committed",
+          "terminal": false,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "32"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-operation-terminal-outcome-unknown",
+      "type": "operation.terminal",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "33",
+        "entityRevision": "33",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:13Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "33",
+          "status": "outcome_unknown",
+          "effectState": "outcome_unknown",
+          "terminal": true,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "33"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-runtime-dispatch-failed-target-invalid",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "completeness": "delta"
+      },
+      "correlation": {
+        "requestId": "req-2"
+      },
+      "occurredAt": "2026-07-28T00:01:14Z",
+      "data": {
+        "status": "failed",
+        "code": "runtime_target_invalid"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-runtime-dispatch-failed-request-invalid",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "completeness": "delta"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:15Z",
+      "data": {
+        "status": "failed",
+        "code": "runtime_request_invalid"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-runtime-dispatch-failed-rejected",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "completeness": "delta"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:16Z",
+      "data": {
+        "status": "failed",
+        "code": "runtime_rejected"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-runtime-dispatch-failed-unavailable",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "completeness": "delta"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:17Z",
+      "data": {
+        "status": "failed",
+        "code": "runtime_unavailable"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "evt-agent-updated-multidigit-revision",
+      "type": "agent.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "agentId": "a"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "agent"
+      },
+      "ordering": {
+        "streamSequence": "34",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:01:18Z",
+      "data": {
+        "agentId": "a",
+        "status": "degraded",
+        "revision": "1024"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-runtime-dispatch-extra",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "completeness": "delta"
+      },
+      "occurredAt": "2026-07-28T00:00:19Z",
+      "data": {
+        "status": "failed",
+        "code": "runtime_rejected",
+        "provider": "forbidden"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-runtime-dispatch-ordering",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "entityRevision": "1",
+        "completeness": "delta"
+      },
+      "occurredAt": "2026-07-28T00:00:19Z",
+      "data": {
+        "status": "failed",
+        "code": "runtime_rejected"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-runtime-dispatch-actor",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "agent",
+        "id": "agent-1"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "completeness": "delta"
+      },
+      "occurredAt": "2026-07-28T00:00:19Z",
+      "data": {
+        "status": "failed",
+        "code": "runtime_rejected"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-runtime-dispatch-code",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "completeness": "delta"
+      },
+      "occurredAt": "2026-07-28T00:00:19Z",
+      "data": {
+        "status": "failed",
+        "code": "provider_error"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-runtime-dispatch-status-code-pair",
+      "type": "runtime.dispatch.failed",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "0",
+        "completeness": "delta"
+      },
+      "occurredAt": "2026-07-28T00:00:19Z",
+      "data": {
+        "status": "unconfirmed",
+        "code": "runtime_rejected"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-unknown-field",
+      "type": "message.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:00Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "senderId": "u",
+          "type": "chat_message",
+          "body": "hello",
+          "state": "completed",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1",
+          "unknown": true
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-type",
+      "type": "unknown",
+      "scope": {
+        "tenantId": "tenant"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:00Z",
+      "data": {}
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-scope",
+      "type": "message.deleted",
+      "scope": {},
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:00Z",
+      "data": {
+        "messageId": "m"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-sequence",
+      "type": "message.deleted",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:00Z",
+      "data": {
+        "messageId": "m"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-message-created-missing-message-offset",
+      "type": "message.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "1",
+        "entityRevision": "1",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:00Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 1,
+          "senderId": "u",
+          "type": "chat_message",
+          "body": "hello",
+          "state": "completed",
+          "content": {
+            "text": "hello"
+          },
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-message-created-non-decimal-message-offset",
+      "type": "message.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "1",
+        "entityRevision": "1",
+        "messageOffset": "1.5",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:00:00Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 1,
+          "senderId": "u",
+          "type": "chat_message",
+          "body": "hello",
+          "state": "completed",
+          "content": {
+            "text": "hello"
+          },
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-message-created-negative-offset",
+      "type": "message.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "35",
+        "entityRevision": "35",
+        "messageOffset": "35",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:00Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": -1,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "hi",
+          "state": "completed",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-message-delta-snapshot-payload",
+      "type": "message.delta",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "36",
+        "messageOffset": "36",
+        "completeness": "delta"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:01Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 36,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "hi",
+          "state": "completed",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1"
+        },
+        "bodyAppend": "x",
+        "bodyFrom": 0
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-operation-sibling-progress",
+      "type": "operation.progress",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "37",
+        "entityRevision": "37",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:02Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "37",
+          "status": "running",
+          "effectState": "running",
+          "terminal": false,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "37"
+        },
+        "progress": 50
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-operation-reduced-snapshot",
+      "type": "operation.started",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "38",
+        "entityRevision": "38",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:03Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "method": "models/list",
+          "state": "started"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-operation-effect-state-mismatch",
+      "type": "operation.terminal",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "39",
+        "entityRevision": "39",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:04Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "39",
+          "status": "succeeded",
+          "effectState": "running",
+          "terminal": true,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "39"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-operation-agent-target-with-conversation",
+      "type": "operation.started",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "40",
+        "entityRevision": "40",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:05Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "agent",
+            "platformAgentId": "agent-1",
+            "conversationId": "c"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "40",
+          "status": "running",
+          "effectState": "running",
+          "terminal": false,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "40"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-operation-stale-contract-revision",
+      "type": "operation.started",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "instance-1"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "41",
+        "entityRevision": "41",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:06Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.2",
+          "transport": "service",
+          "sequence": "41",
+          "status": "running",
+          "effectState": "running",
+          "terminal": false,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "41"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-message-delta-missing-message-offset",
+      "type": "message.delta",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "42",
+        "completeness": "delta"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:07Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "senderId": "a"
+        },
+        "bodyAppend": "x",
+        "bodyFrom": 0
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-message-terminal-missing-message-offset",
+      "type": "message.terminal",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "43",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:08Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 43,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "hi",
+          "state": "completed",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-message-scope-conversation-mismatch",
+      "type": "message.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "other",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "47",
+        "entityRevision": "47",
+        "messageOffset": "47",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:12Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 47,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "hi",
+          "state": "completed",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-operation-scope-instance-mismatch",
+      "type": "operation.started",
+      "scope": {
+        "tenantId": "tenant",
+        "operationId": "o",
+        "instanceId": "other"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "runtime"
+      },
+      "ordering": {
+        "streamSequence": "48",
+        "entityRevision": "48",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:13Z",
+      "data": {
+        "operation": {
+          "id": "o",
+          "instanceId": "instance-1",
+          "target": {
+            "scope": "instance"
+          },
+          "method": "models/list",
+          "capability": "models",
+          "contractRevision": "2026-07-14.3",
+          "transport": "service",
+          "sequence": "48",
+          "status": "running",
+          "effectState": "running",
+          "terminal": false,
+          "createdAt": "2026-07-28T00:00:13Z",
+          "updatedAt": "2026-07-28T00:00:14Z",
+          "revision": "48"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-actor-kind",
+      "type": "message.deleted",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "robot",
+        "id": "r"
+      },
+      "ordering": {
+        "streamSequence": "49",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:14Z",
+      "data": {
+        "messageId": "m"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "bad-completeness",
+      "type": "message.deleted",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "50",
+        "completeness": "partial"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:15Z",
+      "data": {
+        "messageId": "m"
+      }
+    },
+    {
+      "schemaVersion": 2,
+      "eventId": "bad-schema-version",
+      "type": "message.deleted",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "51",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:16Z",
+      "data": {
+        "messageId": "m"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "",
+      "type": "message.deleted",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "52",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:17Z",
+      "data": {
+        "messageId": "m"
+      }
+    }
+  ],
+  "producerLenient": [
+    {
+      "schemaVersion": 1,
+      "eventId": "producer-lenient-message-unknown-state",
+      "type": "message.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c",
+        "messageId": "m"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "44",
+        "entityRevision": "44",
+        "messageOffset": "44",
+        "historyGeneration": "1",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:09Z",
+      "data": {
+        "message": {
+          "id": "m",
+          "conversationId": "c",
+          "offset": 44,
+          "senderId": "a",
+          "type": "agent_reply",
+          "body": "hi",
+          "state": "pending",
+          "createdAt": "2026-07-28T00:00:00Z",
+          "updatedAt": "2026-07-28T00:00:00Z",
+          "historyGeneration": "1"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "producer-lenient-conversation-unknown-state",
+      "type": "conversation.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "45",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:10Z",
+      "data": {
+        "conversation": {
+          "id": "c",
+          "state": "archived",
+          "metadataVersion": "1",
+          "historyGeneration": "1",
+          "updatedAt": "2026-07-28T00:02:10Z"
+        }
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "producer-lenient-conversation-non-decimal-metadata-version",
+      "type": "conversation.created",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "46",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:02:11Z",
+      "data": {
+        "conversation": {
+          "id": "c",
+          "state": "open",
+          "metadataVersion": "v2",
+          "historyGeneration": "1",
+          "updatedAt": "2026-07-28T00:02:11Z"
+        }
+      }
+    }
+  ],
+  "consumerOnly": [
+    {
+      "schemaVersion": 1,
+      "eventId": "consumer-only-inbox-conversation-available",
+      "type": "inbox.conversation.available",
+      "scope": {
+        "tenantId": "tenant"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "60",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:03:00Z",
+      "data": {
+        "conversationId": "c"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "consumer-only-inbox-conversation-unavailable",
+      "type": "inbox.conversation.unavailable",
+      "scope": {
+        "tenantId": "tenant"
+      },
+      "actor": {
+        "kind": "service",
+        "id": "message-service"
+      },
+      "ordering": {
+        "streamSequence": "61",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:03:01Z",
+      "data": {
+        "conversationId": "c"
+      }
+    },
+    {
+      "schemaVersion": 1,
+      "eventId": "consumer-only-conversation-model-override",
+      "type": "conversation.updated",
+      "scope": {
+        "tenantId": "tenant",
+        "conversationId": "c"
+      },
+      "actor": {
+        "kind": "user",
+        "id": "u"
+      },
+      "ordering": {
+        "streamSequence": "62",
+        "completeness": "full"
+      },
+      "correlation": {},
+      "occurredAt": "2026-07-28T00:03:02Z",
+      "data": {
+        "conversation": {
+          "id": "c",
+          "title": "t",
+          "modelOverrideId": "provider/model",
+          "state": "open",
+          "metadataVersion": "2",
+          "historyGeneration": "1",
+          "updatedAt": "2026-07-28T00:03:02Z"
+        }
+      }
+    }
+  ]
+}

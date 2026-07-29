@@ -24,10 +24,10 @@ import {
 // repos at test time — doing so broke the publish pipeline (the backend path
 // does not exist in a standalone checkout). We therefore vendor a verbatim
 // copy under tests/testdata/ so this package is self-contained and the
-// conformance suite runs on every publish. Drift against the canonical file
-// is guarded separately (scripts/check-reducer-vectors.mjs / CI), not by a
-// runtime cross-repo read. The fixture lives under tests/ and is excluded
-// from the published tarball by package.json "files".
+// conformance suite runs on every publish. Drift against the canonical file is
+// guarded by vendored-vectors-drift.test.ts, which runs in this same default
+// suite whenever a backend tree is reachable. The fixture lives under tests/ and
+// is excluded from the published tarball by package.json "files".
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const CANONICAL_VECTORS = "./testdata/reducer_vectors.json";

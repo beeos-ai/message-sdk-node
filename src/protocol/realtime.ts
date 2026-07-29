@@ -241,13 +241,18 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
   return Object.keys(value).every((key) => allowed.includes(key));
 }
 
+/** The durable row offset is a non-negative safe integer, or absent when zero. */
+function isMessageOffset(value: unknown): boolean {
+  return value === undefined || (Number.isSafeInteger(value) && (value as number) >= 0);
+}
+
 function isMessageIdentity(value: unknown): value is Record<string, unknown> {
   return isRecord(value)
     && hasOnlyKeys(value, ["id", "conversationId", "offset", "senderId"])
     && hasString(value, "id")
     && hasString(value, "conversationId")
     && hasString(value, "senderId")
-    && (value.offset === undefined || (Number.isSafeInteger(value.offset) && (value.offset as number) >= 0));
+    && isMessageOffset(value.offset);
 }
 
 function isMessageSnapshot(value: unknown): value is Record<string, unknown> {
@@ -256,6 +261,7 @@ function isMessageSnapshot(value: unknown): value is Record<string, unknown> {
     "createdAt", "updatedAt", "historyGeneration",
   ])) return false;
   if (!hasString(value, "id") || !hasString(value, "conversationId") || !hasString(value, "senderId")) return false;
+  if (!isMessageOffset(value.offset)) return false;
   if (!hasString(value, "type") || typeof value.body !== "string") return false;
   if (!["streaming", "completed", "failed", "refused", "cancelled"].includes(String(value.state))) return false;
   if (!isRFC3339(value.createdAt) || !isRFC3339(value.updatedAt) || !isDecimalString(value.historyGeneration)) return false;
