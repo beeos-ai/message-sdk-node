@@ -101,8 +101,10 @@ export function createCentrifugeFactory(runtime: CentrifugeFactoryRuntimeOptions
           const current = subscriptions.get(id);
           if (!watched) {
             current?.cancel(new Error("conversation subscription cancelled before authorization"));
-            current?.subscription.unsubscribe();
-            current?.subscription.removeAllListeners();
+            if (current) {
+              client.removeSubscription(current.subscription);
+              current.subscription.removeAllListeners();
+            }
             subscriptions.delete(id);
             return;
           }
@@ -125,7 +127,10 @@ export function createCentrifugeFactory(runtime: CentrifugeFactoryRuntimeOptions
           try {
             await state.ready;
           } catch (error) {
-            subscription.unsubscribe();
+            // unsubscribe() only changes the subscription state. Centrifuge
+            // deliberately keeps that channel in its internal registry, so a
+            // later authoritative retry would throw "already exists".
+            client.removeSubscription(subscription);
             subscription.removeAllListeners();
             subscriptions.delete(id);
             throw error;

@@ -22,6 +22,17 @@ export interface ConversationWatchRegistryOptions {
   readonly getSession: () => RealtimeSession | undefined;
 }
 
+export interface DirectorySubscriptionFailure {
+  readonly conversationId: string;
+  readonly error: unknown;
+}
+
+export interface DirectorySubscriptionResult {
+  /** Conversations with a live authorized subscription. Only these may hydrate. */
+  readonly subscribed: ReadonlySet<string>;
+  readonly failed: readonly DirectorySubscriptionFailure[];
+}
+
 export interface ScopeRecoveryResult {
   readonly commit?: ConversationHydrationCommit;
   /**
@@ -100,31 +111,59 @@ export class ConversationWatchRegistry {
     return this.entries.get(conversationId)?.refs ?? 0;
   }
 
-  async setDirectoryConversations(conversationIds: readonly string[]): Promise<void> {
+  /**
+   * Subscribes the directory and reports which conversations are actually
+   * live.
+   *
+   * Authorization is per conversation, so failures are too: one revoked
+   * membership, one conversation deleted between discovery and subscribe, one
+   * server-side 403. Rolling every subscription back on the first such failure
+   * made a single unauthorized conversation deny the whole login its realtime
+   * connection — and because the caller retries discovery identically, the
+   * denial repeated until some unrelated change happened to drop the offending
+   * conversation from the directory.
+   *
+   * A conversation that did not subscribe is simply not in the returned set.
+   * Callers must not hydrate it: without a live subscription the SDK cannot
+   * promise delivery for it, and a hydrated-but-unsubscribed conversation
+   * would silently go stale. Nothing here relaxes authorization — a refused
+   * conversation stays refused, it just no longer takes its neighbours down.
+   */
+  async setDirectoryConversations(
+    conversationIds: readonly string[],
+  ): Promise<DirectorySubscriptionResult> {
     const session = this.options.getSession();
     if (!session) throw new Error("directory subscriptions require the SDK realtime connection");
-    const next = new Set(conversationIds);
-    const added = [...next].filter((id) => !this.directoryConversationIds.has(id));
-    const removed = [...this.directoryConversationIds].filter((id) => !next.has(id));
-    const subscribed: string[] = [];
-    try {
-      for (const id of added) {
+    const requested = new Set(conversationIds);
+    const removed = [...this.directoryConversationIds].filter((id) => !requested.has(id));
+
+    // Existing logical subscriptions receive a new server authorization
+    // barrier after every physical reconnect, so re-subscribe the whole
+    // requested set rather than only the additions.
+    const outcomes = await Promise.all([...requested].map(async (id) => {
+      try {
         await session.setConversationWatched(id, true);
-        subscribed.push(id);
+        return { id, error: undefined };
+      } catch (error) {
+        return { id, error: error ?? new Error("conversation subscription failed") };
       }
-      // Existing logical subscriptions receive a new server authorization
-      // barrier after every physical reconnect. Never hydrate or drain the
-      // recovery buffer until every current directory id is re-subscribed.
-      await Promise.all(
-        [...next].filter((id) => !added.includes(id))
-          .map((id) => session.setConversationWatched(id, true)),
-      );
-    } catch (error) {
-      await Promise.all(subscribed.map((id) =>
-        Promise.resolve(session.setConversationWatched(id, false)).catch(() => undefined)
-      ));
-      throw error;
+    }));
+
+    const subscribed = new Set<string>();
+    const failed: DirectorySubscriptionFailure[] = [];
+    for (const outcome of outcomes) {
+      if (outcome.error === undefined) {
+        subscribed.add(outcome.id);
+        continue;
+      }
+      failed.push({ conversationId: outcome.id, error: outcome.error });
+      // A conversation that lost its subscription also loses any watch handle
+      // resolved under the previous authorization; a stale handle cannot keep
+      // access it no longer has.
+      this.entries.delete(outcome.id);
+      this.directoryRecovery.delete(outcome.id);
     }
+
     for (const id of removed) {
       // Directory authority revokes the internal subscription and invalidates
       // any already-ready UI watch. A caller must acquire a fresh watch after
@@ -133,7 +172,8 @@ export class ConversationWatchRegistry {
       this.directoryRecovery.delete(id);
       await session.setConversationWatched(id, false);
     }
-    this.directoryConversationIds = next;
+    this.directoryConversationIds = subscribed;
+    return { subscribed, failed };
   }
 
 
@@ -239,8 +279,8 @@ export class ConversationWatchRegistry {
       const commit = await this.options.recovery.recoverConversation(conversationId);
 
       // Recovery committed the generation-fenced HTTP snapshot. A buffered
-      // message at/below latestOffset is already represented by the snapshot,
-      // except a same-offset terminal carrying a newer entity revision.
+      // event for a message the snapshot omitted below latestOffset must not
+      // resurrect it; everything else is settled on entity revision.
       entry.buffered.sort(compareScopedOrder);
       for (const event of entry.buffered.splice(0)) {
         if (isNewerThanCommit(event, commit.latestOffset, this.options.projection)) {
@@ -294,12 +334,49 @@ export class ConversationWatchRegistry {
   }
 }
 
+/**
+ * Orders the buffered drain. `streamSequence` alone does not order events
+ * within one v3 turn — all of them share it — so deltas would be left in
+ * whatever order they happened to be buffered in, and `applyDelta` rejects a
+ * chunk whose `bodyFrom` does not meet the body it has so far. Stable sort
+ * makes that work by accident today; `entityRevision` makes it correct.
+ */
 function compareScopedOrder(left: AnyRealtimeEventV1, right: AnyRealtimeEventV1): number {
-  const a = BigInt(left.ordering.streamSequence);
-  const b = BigInt(right.ordering.streamSequence);
-  return a < b ? -1 : a > b ? 1 : 0;
+  const sequence = compareDecimal(left.ordering.streamSequence, right.ordering.streamSequence);
+  if (sequence !== 0) return sequence;
+  const a = left.ordering.entityRevision;
+  const b = right.ordering.entityRevision;
+  if (!a || !b) return 0;
+  return compareDecimal(a, b);
 }
 
+/**
+ * Decides whether a buffered event can still carry information the committed
+ * hydration snapshot does not already hold.
+ *
+ * `messageOffset` locates a row in the conversation log; it is not an event
+ * cursor. Under the v3 single-row envelope (ADR-0023) one assistant turn is a
+ * single `channel_messages` row advanced by PATCH, so every delta and the
+ * terminal of that turn share one offset. Requiring a strictly greater offset
+ * therefore discarded an entire streamed reply whenever it was buffered across
+ * a hydrate. The terminal survived only because it had been given an explicit
+ * exemption — and because a terminal carries a full body snapshot, it papered
+ * over the loss of all 29 deltas instead of exposing it. A terminal exemption
+ * is not a substitute for deltas being admissible in their own right.
+ *
+ * Intra-row ordering belongs to `entityRevision`, and the projection already
+ * enforces it per message type. So the boundary this predicate owns is
+ * narrower than it looked: once an entity is in the committed snapshot the
+ * projection's own revision rule is authoritative and admits the event on its
+ * merits, deltas included, with no terminal special case. Only an entity the
+ * page did not return still needs the offset boundary, to stop a buffered
+ * event from resurrecting a message hydration deliberately omitted.
+ *
+ * This is the same rule the live-connection gate applies in
+ * `protocol/recovery.ts`; the two admission points and the projection must
+ * agree on revision semantics or events die before the layer that can order
+ * them correctly.
+ */
 function isNewerThanCommit(
   event: AnyRealtimeEventV1,
   latestOffset: string,
@@ -308,15 +385,13 @@ function isNewerThanCommit(
   if (!event.type.startsWith("message.")) return true;
   const offset = event.ordering.messageOffset;
   if (!offset) return false;
-  const offsetOrder = compareDecimal(offset, latestOffset);
-  if (offsetOrder > 0) return true;
-  if (offsetOrder < 0 || event.type !== "message.terminal") return false;
 
   const current = event.scope.messageId
     ? projection.getSnapshot().messages[event.scope.messageId]
     : undefined;
-  const revision = event.ordering.entityRevision;
-  return Boolean(current && revision && compareDecimal(revision, current.revision) > 0);
+  if (current) return true;
+
+  return compareDecimal(offset, latestOffset) > 0;
 }
 
 function compareDecimal(left: string, right: string): number {

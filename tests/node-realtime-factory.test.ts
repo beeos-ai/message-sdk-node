@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({
   instances: [] as Array<{
     handlers: Map<string, (ctx: any) => void>;
+    subscriptions: Map<string, unknown>;
     emit(name: string, ctx?: any): void;
   }>,
   subscriptions: [] as Array<{
@@ -15,9 +16,11 @@ const mock = vi.hoisted(() => ({
 vi.mock("centrifuge", () => ({
   Centrifuge: class {
     readonly handlers = new Map<string, (ctx: any) => void>();
+    readonly subscriptions = new Map<string, unknown>();
     constructor() {
       const instance = {
         handlers: this.handlers,
+        subscriptions: this.subscriptions,
         emit: (name: string, ctx: any = {}) => this.handlers.get(name)?.(ctx),
       };
       mock.instances.push(instance);
@@ -30,6 +33,9 @@ vi.mock("centrifuge", () => ({
     disconnect() {}
     setToken() {}
     newSubscription(channel: string) {
+      if (this.subscriptions.has(channel)) {
+        throw new Error(`Subscription to the channel ${channel} already exists`);
+      }
       const handlers = new Map<string, (ctx: any) => void>();
       const value = {
         channel,
@@ -37,12 +43,19 @@ vi.mock("centrifuge", () => ({
         emit: (name: string, ctx: any = {}) => handlers.get(name)?.(ctx),
       };
       mock.subscriptions.push(value);
-      return {
+      const subscription = {
         on(name: string, handler: (ctx: any) => void) { handlers.set(name, handler); },
         subscribe() {},
         unsubscribe() {},
         removeAllListeners() {},
       };
+      this.subscriptions.set(channel, subscription);
+      return subscription;
+    }
+    removeSubscription(subscription: unknown) {
+      for (const [channel, current] of this.subscriptions) {
+        if (current === subscription) this.subscriptions.delete(channel);
+      }
     }
   },
 }));
@@ -136,6 +149,24 @@ describe("Node Centrifugo physical connection contract", () => {
     const denied = new Error("permission denied");
     mock.subscriptions[0].emit("error", { error: denied });
     await expect(watch).rejects.toBe(denied);
+  });
+
+  it("removes a rejected subscription from Centrifuge before an explicit retry", async () => {
+    const fixture = options();
+    const client = createNodeCentrifugeFactory().create(fixture.value);
+    const opening = Promise.resolve(client.connect());
+    mock.instances[0].emit("connected");
+    await opening;
+
+    const first = Promise.resolve(client.setConversationWatched("retry-id", true));
+    mock.subscriptions[0].emit("unsubscribed", { code: 403, reason: "denied" });
+    await expect(first).rejects.toThrow("conversation subscription rejected (403): denied");
+    expect(mock.instances[0].subscriptions.size).toBe(0);
+
+    const retry = Promise.resolve(client.setConversationWatched("retry-id", true));
+    expect(mock.subscriptions[1].channel).toBe("conv:retry-id");
+    mock.subscriptions[1].emit("subscribed");
+    await expect(retry).resolves.toBeUndefined();
   });
 
   it("cancels a pending authorization wait when the logical watch is released", async () => {

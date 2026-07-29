@@ -377,8 +377,45 @@ export interface MessageClientSnapshot extends DomainProjectionSnapshot {
   readonly recoveryError?: string;
 }
 
+/**
+ * A realtime event the SDK refused before it could reach dedupe, projection,
+ * or listeners. Dropping an event is a load-bearing decision, so it is
+ * reported rather than swallowed: a silent drop here once cost a full day of
+ * production diagnosis with no signal on either side of the wire.
+ */
+export interface RealtimeDropDiagnostic {
+  readonly reason: "ignore_stale";
+  readonly eventId: string;
+  readonly eventType: string;
+  readonly scope: string;
+  readonly conversationId?: string;
+  readonly messageId?: string;
+  readonly incomingStreamSequence: string;
+  readonly previousStreamSequence?: string;
+  readonly incomingEntityRevision?: string;
+  readonly previousEntityRevision?: string;
+}
+
+/**
+ * A conversation the directory could not subscribe. The rest of the directory
+ * still connects; this one is retried with backoff.
+ */
+export interface DirectorySubscribeFailureDiagnostic {
+  readonly conversationId: string;
+  /** 1 for the first failure, incrementing across retries. */
+  readonly attempt: number;
+  readonly error: unknown;
+}
+
 export interface MessageClientComposition {
   readonly conversationQuery: ConversationQueryPort;
+  /**
+   * Optional sink for events the SDK discards. Never throws into SDK control
+   * flow; a failing sink is ignored like any other observer.
+   */
+  readonly onRealtimeDrop?: (diagnostic: RealtimeDropDiagnostic) => void;
+  /** Optional sink for conversations that failed to subscribe. Never throws. */
+  readonly onDirectorySubscribeFailure?: (diagnostic: DirectorySubscribeFailureDiagnostic) => void;
   readonly privateConversationDirectoryQuery?: PrivateConversationDirectoryQueryPort;
   readonly conversationCommand: ConversationCommandPort;
   readonly conversationRoutes?: ConversationRoutePort;
