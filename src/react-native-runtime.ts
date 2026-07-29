@@ -606,8 +606,12 @@ function message(
     body: optionalString(raw.body) ?? "",
     ...(raw.parts === undefined ? {} : { parts: jsonValue(raw.parts) }),
     ...(content === undefined ? {} : { content }),
-    ...(optionalString(raw.inReplyTo ?? raw.in_reply_to)
-      ? { replyTo: optionalString(raw.inReplyTo ?? raw.in_reply_to) }
+    ...(optionalString(raw.replyTo ?? raw.reply_to ?? raw.inReplyTo ?? raw.in_reply_to)
+      ? {
+        replyTo: optionalString(
+          raw.replyTo ?? raw.reply_to ?? raw.inReplyTo ?? raw.in_reply_to,
+        ),
+      }
       : {}),
     state: messageState(raw.state),
     ...(optionalString(raw.stopReason ?? raw.stop_reason)
