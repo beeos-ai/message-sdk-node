@@ -26,6 +26,34 @@
     "consumerOnlyEventTypes": [
       "inbox.conversation.available",
       "inbox.conversation.unavailable"
+    ],
+    "orderingDecisions": [
+      "apply",
+      "ignore_stale",
+      "rebase"
+    ],
+    "orderingRebaseReasons": [
+      "sequence_gap",
+      "history_generation_changed",
+      "projection_epoch_changed"
+    ],
+    "replayDecisions": [
+      "apply",
+      "ignore_stale"
+    ],
+    "orderingScenarios": [
+      "equal-stream-sequence-advancing-entity-revision",
+      "equal-stream-sequence-equal-entity-revision",
+      "equal-stream-sequence-older-entity-revision",
+      "equal-stream-sequence-incoming-entity-revision-missing",
+      "equal-stream-sequence-cursor-entity-revision-missing",
+      "older-stream-sequence",
+      "next-stream-sequence",
+      "stream-sequence-gap",
+      "production-streaming-burst-offset-14",
+      "buffered-replay-of-streaming-burst-offset-14",
+      "buffered-replay-of-row-the-page-omitted",
+      "buffered-replay-of-row-above-the-boundary"
     ]
   },
   "valid": [
@@ -2097,12 +2125,10 @@
       "data": {
         "messageId": "m"
       }
-    }
-  ],
-  "producerLenient": [
+    },
     {
       "schemaVersion": 1,
-      "eventId": "producer-lenient-message-unknown-state",
+      "eventId": "bad-message-unknown-state",
       "type": "message.created",
       "scope": {
         "tenantId": "tenant",
@@ -2139,7 +2165,7 @@
     },
     {
       "schemaVersion": 1,
-      "eventId": "producer-lenient-conversation-unknown-state",
+      "eventId": "bad-conversation-unknown-state",
       "type": "conversation.updated",
       "scope": {
         "tenantId": "tenant",
@@ -2167,7 +2193,7 @@
     },
     {
       "schemaVersion": 1,
-      "eventId": "producer-lenient-conversation-non-decimal-metadata-version",
+      "eventId": "bad-conversation-non-decimal-metadata-version",
       "type": "conversation.created",
       "scope": {
         "tenantId": "tenant",
@@ -2194,6 +2220,7 @@
       }
     }
   ],
+  "producerLenient": [],
   "consumerOnly": [
     {
       "schemaVersion": 1,
@@ -2266,6 +2293,3334 @@
           "updatedAt": "2026-07-28T00:03:02Z"
         }
       }
+    }
+  ],
+  "orderingSequences": [
+    {
+      "name": "equal-stream-sequence-advancing-entity-revision",
+      "why": "The in-place PATCH shape in miniature. Equal streamSequence is not staleness when entityRevision moved forward; it is the next revision of the same row.",
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-adv-created",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-adv-delta-1",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 0,
+              "bodyAppend": "Hel"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-adv-delta-2",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996050334",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.050334Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 3,
+              "bodyAppend": "lo"
+            }
+          }
+        }
+      ],
+      "expectProjection": {
+        "exists": true,
+        "body": "Hello",
+        "state": "streaming"
+      }
+    },
+    {
+      "name": "equal-stream-sequence-equal-entity-revision",
+      "why": "A genuinely duplicated frame: same row, same revision. Applying it twice would double-append the delta.",
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-dup-created",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-dup-delta",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 0,
+              "bodyAppend": "Hel"
+            }
+          }
+        },
+        {
+          "expect": "ignore_stale",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-dup-replay",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 0,
+              "bodyAppend": "Hel"
+            }
+          }
+        }
+      ],
+      "expectProjection": {
+        "exists": true,
+        "body": "Hel",
+        "state": "streaming"
+      }
+    },
+    {
+      "name": "equal-stream-sequence-older-entity-revision",
+      "why": "Out-of-order redelivery of an earlier revision of the same row.",
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-old-created",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-old-delta-2",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996050334",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.050334Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 0,
+              "bodyAppend": "Hel"
+            }
+          }
+        },
+        {
+          "expect": "ignore_stale",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-old-delta-1",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 0,
+              "bodyAppend": "X"
+            }
+          }
+        }
+      ],
+      "expectProjection": {
+        "exists": true,
+        "body": "Hel",
+        "state": "streaming"
+      }
+    },
+    {
+      "name": "equal-stream-sequence-incoming-entity-revision-missing",
+      "why": "entityRevision is optional on the wire, so an equal streamSequence with no revision carries no evidence of progress. Fail closed: treating an absent revision as zero would make every such event apply.",
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-miss-in-created",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "ignore_stale",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-miss-in-delta",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 0,
+              "bodyAppend": "Hel"
+            }
+          }
+        }
+      ],
+      "expectProjection": {
+        "exists": true,
+        "body": "",
+        "state": "streaming"
+      }
+    },
+    {
+      "name": "equal-stream-sequence-cursor-entity-revision-missing",
+      "why": "The mirror case: the cursor was established by an event with no revision, so there is nothing to compare against. Fail closed on this side too.",
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-miss-cur-created",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "ignore_stale",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-eq-miss-cur-delta",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 0,
+              "bodyAppend": "Hel"
+            }
+          }
+        }
+      ],
+      "expectProjection": {
+        "exists": true,
+        "body": "",
+        "state": "streaming"
+      }
+    },
+    {
+      "name": "older-stream-sequence",
+      "why": "A lower row offset is unambiguously behind the cursor.",
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-older-created",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.736447Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "ignore_stale",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-older-replay",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "13",
+              "entityRevision": "1785305996050334",
+              "messageOffset": "13",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.050334Z",
+            "data": {
+              "message": {
+                "id": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 13,
+                "senderId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+                "type": "chat_message",
+                "body": "why is nothing rendering",
+                "state": "completed",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:56.050334Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "next-stream-sequence",
+      "why": "The ordinary advance: the next durable row in the conversation.",
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-next-created-13",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "13",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "13",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 13,
+                "senderId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+                "type": "chat_message",
+                "body": "why is nothing rendering",
+                "state": "completed",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-next-created-14",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.736447Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "stream-sequence-gap",
+      "why": "A skipped row can carry an irreversible delete or membership change, so the consumer must resynchronise rather than guess.",
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-gap-created-13",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "13",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "13",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 13,
+                "senderId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+                "type": "chat_message",
+                "body": "why is nothing rendering",
+                "state": "completed",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "rebase",
+          "reason": "sequence_gap",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-gap-created-16",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "16",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "16",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 16,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.736447Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "production-streaming-burst-offset-14",
+      "why": "The captured 2026-07-29 burst. ADR-0023 keeps one channel_messages row per reply and PATCHes it in place, so streamSequence stays \"14\" for the whole reply and only entityRevision advances. Both SDKs compared streamSequence alone and dropped every event after the first, leaving the bubble empty.",
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-user-created",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "13",
+              "entityRevision": "1785305995022560",
+              "messageOffset": "13",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.022560Z",
+            "data": {
+              "message": {
+                "id": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 13,
+                "senderId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+                "type": "chat_message",
+                "body": "why is nothing rendering",
+                "state": "completed",
+                "createdAt": "2026-07-29T05:39:55.022560Z",
+                "updatedAt": "2026-07-29T05:39:55.022560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-created",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-01",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995474874",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.474874Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 0,
+              "bodyAppend": "I"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-02",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995527189",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.527189Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 1,
+              "bodyAppend": " checked"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-03",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995579503",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.579503Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 9,
+              "bodyAppend": " the"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-04",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995631818",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.631818Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 13,
+              "bodyAppend": " pod"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-05",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995684132",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.684132Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 17,
+              "bodyAppend": " logs"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-06",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 22,
+              "bodyAppend": " for"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-07",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995788761",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.788761Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 26,
+              "bodyAppend": " you"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-08",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995841076",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.841076Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 30,
+              "bodyAppend": "."
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-09",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995893390",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.893390Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 31,
+              "bodyAppend": " The"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-10",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995945705",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.945705Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 35,
+              "bodyAppend": " realtime"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-11",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995998019",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.998019Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 44,
+              "bodyAppend": " subscription"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-12",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996050334",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.050334Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 57,
+              "bodyAppend": " is"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-13",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996102648",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.102648Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 60,
+              "bodyAppend": " up"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-14",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996154963",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.154963Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 63,
+              "bodyAppend": ","
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-15",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996207277",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.207277Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 64,
+              "bodyAppend": " but"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-16",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996259591",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.259591Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 68,
+              "bodyAppend": " every"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-17",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996311906",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.311906Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 74,
+              "bodyAppend": " delta"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-18",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996364220",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.364220Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 80,
+              "bodyAppend": " after"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-19",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996416535",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.416535Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 86,
+              "bodyAppend": " the"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-20",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996468849",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.468849Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 90,
+              "bodyAppend": " first"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-21",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996521164",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.521164Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 96,
+              "bodyAppend": " one"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-22",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996573478",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.573478Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 100,
+              "bodyAppend": " is"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-23",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996625793",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.625793Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 103,
+              "bodyAppend": " being"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-24",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996678107",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.678107Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 109,
+              "bodyAppend": " dropped"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-25",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996730422",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.730422Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 117,
+              "bodyAppend": " before"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-26",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996782736",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.782736Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 124,
+              "bodyAppend": " it"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-27",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996835051",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.835051Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 127,
+              "bodyAppend": " reaches"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-28",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996887365",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.887365Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 135,
+              "bodyAppend": " the"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-delta-29",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996939680",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.939680Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 139,
+              "bodyAppend": " reducer"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-seq-asst-terminal",
+            "type": "message.terminal",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996991994",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.991994Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "I checked the pod logs for you. The realtime subscription is up, but every delta after the first one is being dropped before it reaches the reducer",
+                "state": "completed",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:56.991994Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        }
+      ],
+      "expectProjection": {
+        "exists": true,
+        "body": "I checked the pod logs for you. The realtime subscription is up, but every delta after the first one is being dropped before it reaches the reducer",
+        "state": "completed"
+      }
+    },
+    {
+      "name": "buffered-replay-of-streaming-burst-offset-14",
+      "why": "The captured burst arriving while the conversation hydrates. The page committed the reply row at offset 14 with an empty body, so every buffered delta carries that same offset and not one of them is strictly greater than the commit boundary. What makes them admissible is that the row is already in the projection. Dropping them emptied the bubble on the recovery path exactly as on the live path.",
+      "replay": {
+        "committedLatestOffset": "14",
+        "bufferedFromStep": 1
+      },
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-created",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-01",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995474874",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.474874Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 0,
+              "bodyAppend": "I"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-02",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995527189",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.527189Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 1,
+              "bodyAppend": " checked"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-03",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995579503",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.579503Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 9,
+              "bodyAppend": " the"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-04",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995631818",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.631818Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 13,
+              "bodyAppend": " pod"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-05",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995684132",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.684132Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 17,
+              "bodyAppend": " logs"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-06",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995736447",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.736447Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 22,
+              "bodyAppend": " for"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-07",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995788761",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.788761Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 26,
+              "bodyAppend": " you"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-08",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995841076",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.841076Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 30,
+              "bodyAppend": "."
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-09",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995893390",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.893390Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 31,
+              "bodyAppend": " The"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-10",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995945705",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.945705Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 35,
+              "bodyAppend": " realtime"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-11",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995998019",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.998019Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 44,
+              "bodyAppend": " subscription"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-12",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996050334",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.050334Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 57,
+              "bodyAppend": " is"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-13",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996102648",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.102648Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 60,
+              "bodyAppend": " up"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-14",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996154963",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.154963Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 63,
+              "bodyAppend": ","
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-15",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996207277",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.207277Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 64,
+              "bodyAppend": " but"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-16",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996259591",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.259591Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 68,
+              "bodyAppend": " every"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-17",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996311906",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.311906Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 74,
+              "bodyAppend": " delta"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-18",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996364220",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.364220Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 80,
+              "bodyAppend": " after"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-19",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996416535",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.416535Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 86,
+              "bodyAppend": " the"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-20",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996468849",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.468849Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 90,
+              "bodyAppend": " first"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-21",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996521164",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.521164Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 96,
+              "bodyAppend": " one"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-22",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996573478",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.573478Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 100,
+              "bodyAppend": " is"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-23",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996625793",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.625793Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 103,
+              "bodyAppend": " being"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-24",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996678107",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.678107Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 109,
+              "bodyAppend": " dropped"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-25",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996730422",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.730422Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 117,
+              "bodyAppend": " before"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-26",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996782736",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.782736Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 124,
+              "bodyAppend": " it"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-27",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996835051",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.835051Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 127,
+              "bodyAppend": " reaches"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-28",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996887365",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.887365Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 135,
+              "bodyAppend": " the"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-delta-29",
+            "type": "message.delta",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996939680",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "delta"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.939680Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1"
+              },
+              "bodyFrom": 139,
+              "bodyAppend": " reducer"
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-terminal",
+            "type": "message.terminal",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305996991994",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:56.991994Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "I checked the pod logs for you. The realtime subscription is up, but every delta after the first one is being dropped before it reaches the reducer",
+                "state": "completed",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:56.991994Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        }
+      ],
+      "expectProjection": {
+        "exists": true,
+        "body": "I checked the pod logs for you. The realtime subscription is up, but every delta after the first one is being dropped before it reaches the reducer",
+        "state": "completed"
+      }
+    },
+    {
+      "name": "buffered-replay-of-row-the-page-omitted",
+      "why": "The offset boundary still owns this case. A page that deliberately did not return a row below its latestOffset \u2014 deleted, redacted, filtered \u2014 must not have it resurrected out of the buffer. The live gate rejects it too, for the simpler reason that its sequence is behind the cursor.",
+      "replay": {
+        "committedLatestOffset": "14",
+        "bufferedFromStep": 1
+      },
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-omitted-base",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "ignore_stale",
+          "expectBuffered": "ignore_stale",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-omitted-13",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "13",
+              "entityRevision": "1785305995474874",
+              "messageOffset": "13",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.474874Z",
+            "data": {
+              "message": {
+                "id": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 13,
+                "senderId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+                "type": "chat_message",
+                "body": "why is nothing rendering",
+                "state": "completed",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.474874Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "buffered-replay-of-row-above-the-boundary",
+      "why": "A row the page could not have seen. Above the commit boundary the offset comparison is meaningful on its own and the event is new information.",
+      "replay": {
+        "committedLatestOffset": "14",
+        "bufferedFromStep": 1
+      },
+      "steps": [
+        {
+          "expect": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-above-base",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "asst_1bd1e88a505c4605e6f329921a7a25b6"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "14",
+              "entityRevision": "1785305995422560",
+              "messageOffset": "14",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.422560Z",
+            "data": {
+              "message": {
+                "id": "asst_1bd1e88a505c4605e6f329921a7a25b6",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 14,
+                "senderId": "agent:openclaw-1",
+                "type": "chat_message",
+                "body": "",
+                "state": "streaming",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.422560Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        },
+        {
+          "expect": "apply",
+          "expectBuffered": "apply",
+          "event": {
+            "schemaVersion": 1,
+            "eventId": "evt-replay-above-15",
+            "type": "message.created",
+            "scope": {
+              "tenantId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+              "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+              "messageId": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61"
+            },
+            "actor": {
+              "kind": "service",
+              "id": "message-service"
+            },
+            "ordering": {
+              "streamSequence": "15",
+              "entityRevision": "1785305995474874",
+              "messageOffset": "15",
+              "historyGeneration": "0",
+              "completeness": "full"
+            },
+            "correlation": {},
+            "occurredAt": "2026-07-29T05:39:55.474874Z",
+            "data": {
+              "message": {
+                "id": "usr_0f6a41c2d7b84e0a9c5138ab2e7f4d61",
+                "conversationId": "29538125-678c-4d9d-a50e-c3babadf0839",
+                "offset": 15,
+                "senderId": "user:9f2c1d7e-4a3b-4c8d-9e1f-2b3c4d5e6f70",
+                "type": "chat_message",
+                "body": "and now?",
+                "state": "completed",
+                "createdAt": "2026-07-29T05:39:55.422560Z",
+                "updatedAt": "2026-07-29T05:39:55.474874Z",
+                "historyGeneration": "0"
+              }
+            }
+          }
+        }
+      ]
     }
   ]
 }

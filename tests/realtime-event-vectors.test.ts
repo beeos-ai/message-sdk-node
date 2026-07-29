@@ -115,6 +115,15 @@ describe("RealtimeEventV1 shared conformance corpus", () => {
   // Rejecting them here is correct — it is the same asymmetry that took agent
   // pods down when the server omitted ordering.messageOffset — but the
   // asymmetry has to stay visible rather than being discovered in production.
+  //
+  // The list is empty today: the message-state, conversation-state, and
+  // metadataVersion cases were tightened at the producer and moved into
+  // `invalid`. `loadVectors` still requires the category to be declared, so an
+  // empty list reads as "no known divergence" rather than "nobody checked".
+  it("declares the producer-lenient category even when there is nothing to record", () => {
+    expect(Array.isArray(vectors.producerLenient)).toBe(true);
+  });
+
   for (const [index, event] of vectors.producerLenient.entries()) {
     it(`rejects producer-lenient ${label(event, `producerLenient[${index}]`)}`, () => {
       expect(() => validateRealtimeEvent(event)).toThrow(RealtimeEventValidationError);
