@@ -355,3 +355,97 @@ describe("Node Message Service composition route matrix", () => {
       .rejects.toBeInstanceOf(OutcomeUnknownError);
   });
 });
+
+describe("Node HTTP message hydrate field mapping", () => {
+  it("maps reply_to and stop_reason from HTTP hydrate payloads", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/api/v2/conversations/c1")) {
+        return json({
+          id: "c1",
+          state: "open",
+          history_generation: 1,
+          metadata_version: 1,
+          updated_at: at,
+        });
+      }
+      if (url.includes("/api/v2/conversations/c1/messages")) {
+        return json({
+          messages: [
+            {
+              id: "reply-1",
+              conversation_id: "c1",
+              sender: "agent-a",
+              type: "agent_reply",
+              body: "done",
+              content: null,
+              reply_to: "req-1",
+              stop_reason: "completed",
+              state: "completed",
+              history_generation: 1,
+              offset: 2,
+              created_at: at,
+              updated_at: at,
+            },
+            {
+              id: "reply-2",
+              conversation_id: "c1",
+              sender: "agent-a",
+              type: "agent_reply",
+              body: "also",
+              content: null,
+              in_reply_to: "req-2",
+              state: "completed",
+              history_generation: 1,
+              offset: 3,
+              created_at: at,
+              updated_at: at,
+            },
+          ],
+          history_generation: 1,
+          history_boundary_offset: 0,
+          latest_offset: 3,
+          has_more: false,
+        });
+      }
+      if (url.includes("/api/v3/conversations/c1/messages/reply-1")) {
+        return json({
+          id: "reply-1",
+          conversation_id: "c1",
+          sender: "agent-a",
+          type: "agent_reply",
+          body: "done",
+          content: null,
+          reply_to: "req-1",
+          stop_reason: "completed",
+          state: "completed",
+          history_generation: 1,
+          offset: 2,
+          created_at: at,
+          updated_at: at,
+        });
+      }
+      throw new Error(`unexpected request ${url}`);
+    }));
+
+    const composition = createNodeMessageClientComposition(options());
+    await composition.conversationQuery.getConversation("c1");
+    const page = await composition.messageQuery.listMessages("c1");
+    expect(page.messages[0]).toMatchObject({
+      id: "reply-1",
+      replyTo: "req-1",
+      stopReason: "completed",
+    });
+    expect(page.messages[1]).toMatchObject({
+      id: "reply-2",
+      replyTo: "req-2",
+    });
+    const single = await composition.messageQuery.getMessage("c1", "reply-1");
+    expect(single).toMatchObject({
+      id: "reply-1",
+      replyTo: "req-1",
+      stopReason: "completed",
+    });
+  });
+});
+
