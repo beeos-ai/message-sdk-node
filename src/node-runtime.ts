@@ -24,6 +24,7 @@ import {
   type RuntimeDeliveryAuthorityPort,
 } from "./runtime-delivery.js";
 import type { Logger, TokenProvider, TokenResponse } from "./types.js";
+import { formatOpenClawDeliveryBoundary } from "./openclaw-delivery-observability.js";
 
 export interface NodeMessageClientOptions {
   readonly tokenProvider: TokenProvider;
@@ -70,7 +71,7 @@ export function createNodeMessageClientComposition(
     throw new Error("node message client requires the explicit message-service route");
   }
   const credentials = new SharedCredentials(options);
-  const http = new NodeMessageHttpAdapter(credentials);
+  const http = new NodeMessageHttpAdapter(credentials, options.logger);
   const nodeTransport = new SharedNodeMessageServiceTransport(
     credentials,
     options.runtimeDelivery?.scopedDeliveryKey,
@@ -241,7 +242,10 @@ class SharedCredentials {
 class NodeMessageHttpAdapter {
   private readonly generations = new Map<string, string>();
 
-  constructor(private readonly credentials: SharedCredentials) {}
+  constructor(
+    private readonly credentials: SharedCredentials,
+    private readonly logger?: Logger,
+  ) {}
 
   async getConversation(id: string): Promise<ConversationProjection> {
     const raw = await this.request("GET", `/api/v2/conversations/${encodeURIComponent(id)}`);
@@ -399,14 +403,29 @@ class NodeMessageHttpAdapter {
         command.idempotencyKey,
       );
       const raw = record(await response.json());
+      const outcome = raw.idempotent ? "duplicate" : response.status === 201 ? "created" : "accepted";
+      this.logger?.info?.(formatOpenClawDeliveryBoundary({
+        stage: "sdk_stream_open",
+        status: "accepted",
+        code: String(outcome),
+        conversationId: command.conversationId,
+        messageId: requiredString(raw.id),
+      }));
       return {
         messageId: requiredString(raw.id),
-        outcome: raw.idempotent ? "duplicate" : response.status === 201 ? "created" : "accepted",
+        outcome,
         idempotent: Boolean(raw.idempotent),
         correlationId: response.headers.get("x-request-id") ?? undefined,
         ...decodeOptionalRuntimeDispatch(raw),
       };
     } catch (error) {
+      this.logger?.warn?.(formatOpenClawDeliveryBoundary({
+        stage: "sdk_stream_open",
+        status: "failed",
+        code: error instanceof NodeHttpError ? `http_${error.status}` : "outcome_unknown",
+        conversationId: command.conversationId,
+        messageId: command.clientMessageId,
+      }));
       if (error instanceof NodeHttpError || error instanceof RuntimeDispatchContractError) throw error;
       throw new OutcomeUnknownError({
         phase: "open", conversationId: command.conversationId,
@@ -427,15 +446,16 @@ class NodeMessageHttpAdapter {
       messageId,
       { body_append: bodyAppend, body_from: bodyFrom },
       key,
+      "sdk_delta_append",
     );
   }
 
   setBody(conversationId: string, messageId: string, body: string, key: string): Promise<void> {
-    return this.patchMessage(conversationId, messageId, { body }, key);
+    return this.patchMessage(conversationId, messageId, { body }, key, "sdk_delta_append");
   }
 
   setParts(conversationId: string, messageId: string, parts: readonly JsonValue[], key: string): Promise<void> {
-    return this.patchMessage(conversationId, messageId, { parts }, key);
+    return this.patchMessage(conversationId, messageId, { parts }, key, "sdk_delta_append");
   }
 
   finalize(
@@ -445,7 +465,14 @@ class NodeMessageHttpAdapter {
     key: string,
     stopReason?: string,
   ): Promise<void> {
-    return this.patchMessage(conversationId, messageId, { state, stop_reason: stopReason }, key);
+    return this.patchMessage(
+      conversationId,
+      messageId,
+      { state, stop_reason: stopReason },
+      key,
+      "sdk_terminal_finalize",
+      state,
+    );
   }
 
   async executeMethod(): Promise<ExecuteMethodReceipt> {
@@ -461,13 +488,34 @@ class NodeMessageHttpAdapter {
     throw new Error("runtime methods are not available on the explicit message-service route");
   }
 
-  private patchMessage(conversationId: string, messageId: string, body: unknown, key: string): Promise<void> {
+  private patchMessage(
+    conversationId: string,
+    messageId: string,
+    body: unknown,
+    key: string,
+    stage: "sdk_delta_append" | "sdk_terminal_finalize",
+    reason?: string,
+  ): Promise<void> {
     return this.request(
       "PATCH",
       `/api/v3/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
       body,
       key,
-    ).then(() => undefined);
+    ).then(
+      () => {
+        this.logger?.info?.(formatOpenClawDeliveryBoundary({
+          stage, status: "accepted", reason, conversationId, messageId,
+        }));
+      },
+      (error: unknown) => {
+        this.logger?.warn?.(formatOpenClawDeliveryBoundary({
+          stage, status: "failed", reason,
+          code: error instanceof NodeHttpError ? `http_${error.status}` : "outcome_unknown",
+          conversationId, messageId,
+        }));
+        throw error;
+      },
+    );
   }
 
   private async request(
