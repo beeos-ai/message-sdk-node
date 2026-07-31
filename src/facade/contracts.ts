@@ -1,9 +1,6 @@
 import type {
   AnyRealtimeEventV1,
   JsonValue,
-  RealtimeCursor,
-  RealtimeDeliveryAudience,
-  ScopedRealtimeCursors,
   RealtimeEventType,
   RuntimeDispatchReceipt,
 } from "../protocol/index.js";
@@ -69,6 +66,17 @@ export interface OperationProjection {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly revision: string;
+}
+
+export interface SessionNewResult {
+  readonly sessionId: string;
+  readonly conversationId: string;
+  readonly [key: string]: JsonValue;
+}
+
+export interface SessionNewOperationProjection extends OperationProjection {
+  readonly method: "session.new";
+  readonly result?: SessionNewResult;
 }
 
 export interface ConversationHydrationProof {
@@ -326,31 +334,16 @@ export type RealtimeConnectionState =
   | "failed";
 
 export interface RealtimeSession {
-  setConversationWatched(conversationId: string, watched: boolean): Promise<void> | void;
   close(): Promise<void> | void;
 }
 
 export interface RealtimeConnectInput {
-  readonly cursor?: RealtimeCursor;
-  onEvent(event: unknown, audience?: RealtimeDeliveryAudience): void;
+  onEvent(event: unknown): void;
   onState(state: RealtimeConnectionState): void;
 }
 
 export interface RealtimeSessionPort {
   connect(input: RealtimeConnectInput): Promise<RealtimeSession>;
-}
-
-export interface ProjectionStore {
-  loadCheckpoint(): Promise<ProjectionCheckpoint | undefined>;
-  /** Must atomically commit projection and cursors in one storage transaction. */
-  commitCheckpoint(checkpoint: ProjectionCheckpoint): Promise<void>;
-  /** Releases subject-scoped durable resources when the client is retired. */
-  close?(): Promise<void> | void;
-}
-
-export interface ProjectionCheckpoint {
-  readonly projection: DomainProjectionSnapshot;
-  readonly cursors: ScopedRealtimeCursors;
 }
 
 export interface LifecyclePort {
@@ -385,45 +378,8 @@ export interface MessageClientSnapshot extends DomainProjectionSnapshot {
   readonly recoveryError?: string;
 }
 
-/**
- * A realtime event the SDK refused before it could reach dedupe, projection,
- * or listeners. Dropping an event is a load-bearing decision, so it is
- * reported rather than swallowed: a silent drop here once cost a full day of
- * production diagnosis with no signal on either side of the wire.
- */
-export interface RealtimeDropDiagnostic {
-  readonly reason: "ignore_stale";
-  readonly eventId: string;
-  readonly eventType: string;
-  readonly scope: string;
-  readonly conversationId?: string;
-  readonly messageId?: string;
-  readonly incomingStreamSequence: string;
-  readonly previousStreamSequence?: string;
-  readonly incomingEntityRevision?: string;
-  readonly previousEntityRevision?: string;
-}
-
-/**
- * A conversation the directory could not subscribe. The rest of the directory
- * still connects; this one is retried with backoff.
- */
-export interface DirectorySubscribeFailureDiagnostic {
-  readonly conversationId: string;
-  /** 1 for the first failure, incrementing across retries. */
-  readonly attempt: number;
-  readonly error: unknown;
-}
-
 export interface MessageClientComposition {
   readonly conversationQuery: ConversationQueryPort;
-  /**
-   * Optional sink for events the SDK discards. Never throws into SDK control
-   * flow; a failing sink is ignored like any other observer.
-   */
-  readonly onRealtimeDrop?: (diagnostic: RealtimeDropDiagnostic) => void;
-  /** Optional sink for conversations that failed to subscribe. Never throws. */
-  readonly onDirectorySubscribeFailure?: (diagnostic: DirectorySubscribeFailureDiagnostic) => void;
   readonly privateConversationDirectoryQuery?: PrivateConversationDirectoryQueryPort;
   readonly conversationCommand: ConversationCommandPort;
   readonly conversationRoutes?: ConversationRoutePort;
@@ -434,6 +390,5 @@ export interface MessageClientComposition {
   readonly runtimeDelivery?: RuntimeDeliveryPort;
   readonly realtime: RealtimeSessionPort;
   readonly currentPrincipal: CurrentPrincipalPort;
-  readonly projectionStore?: ProjectionStore;
   readonly lifecycle?: LifecyclePort;
 }

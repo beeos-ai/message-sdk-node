@@ -2,15 +2,10 @@ import { OutcomeUnknownError } from "./errors.js";
 import { UnifiedMessageStream } from "./message-stream.js";
 import {
   decodeRealtimeEvent,
-  evaluateScopedRealtimeEvent,
-  realtimeScopeKey,
   RealtimeDedupe,
-  withScopedRealtimeCursor,
   type AnyRealtimeEventV1,
-  type RealtimeDeliveryAudience,
-  type ScopedRealtimeCursors,
 } from "./protocol/index.js";
-import { ConversationWatchRegistry, type DirectorySubscriptionFailure } from "./facade/watch-registry.js";
+import { ConversationWatchRegistry } from "./facade/watch-registry.js";
 import { ProjectionEngine } from "./facade/projection.js";
 import { RecoveryCoordinator } from "./facade/recovery-coordinator.js";
 import type {
@@ -99,9 +94,6 @@ export interface MessageClient {
   subscribe(listener: StoreListener): () => void;
 }
 
-const DIRECTORY_RETRY_BASE_MS = 1_000;
-const DIRECTORY_RETRY_MAX_MS = 30_000;
-
 /**
  * The one MessageClient implementation. Platform composition supplies narrow
  * HTTPS/WSS/storage/lifecycle ports; feature code only receives this object.
@@ -115,7 +107,7 @@ export class UnifiedMessageClient implements MessageClient {
   private readonly recovery: RecoveryCoordinator;
   private readonly watches: ConversationWatchRegistry;
   private readonly listeners = new Map<number, { filter: RealtimeListenFilter; listener: EventListener }>();
-  private readonly ephemeralDedupe = new RealtimeDedupe();
+  private readonly eventDedupe = new RealtimeDedupe();
   private readonly storeListeners = new Set<StoreListener>();
   private readonly runtimeConsumers = new Set<RuntimeDeliveryConsumer>();
   private nextListenerId = 1;
@@ -124,23 +116,14 @@ export class UnifiedMessageClient implements MessageClient {
   private connectPromise?: Promise<void>;
   private requestedConnection = false;
   private stopLifecycle?: () => void;
-  private restored = false;
   private recoveryError?: string;
-  private checkpointWrite: Promise<void> = Promise.resolve();
-  private projectionStoreClosePending = false;
-  private scopedCursors: ScopedRealtimeCursors = { conversations: {} };
   private transportInterrupted = false;
   private recoveryBuffering = false;
   private recoveryBatching = false;
   private recoveryDirty = false;
   private privateRecoveryPromise?: Promise<void>;
   private privateDirectoryRefreshRequested = false;
-  private directoryRetryAttempt = 0;
-  private directoryRetryTimer?: ReturnType<typeof setTimeout>;
-  private readonly bufferedInbound: Array<{
-    raw: unknown;
-    audience: RealtimeDeliveryAudience;
-  }> = [];
+  private readonly bufferedInbound: unknown[] = [];
   private readonly deferredListenerEvents: AnyRealtimeEventV1[] = [];
   private snapshot: MessageClientSnapshot;
 
@@ -154,7 +137,6 @@ export class UnifiedMessageClient implements MessageClient {
     this.watches = new ConversationWatchRegistry({
       recovery: this.recovery,
       projection: this.projection,
-      getSession: () => this.session,
     });
     this.snapshot = this.makeSnapshot();
 
@@ -216,7 +198,6 @@ export class UnifiedMessageClient implements MessageClient {
 
   async connect(): Promise<void> {
     this.requestedConnection = true;
-    this.projectionStoreClosePending = true;
     this.startLifecycle();
     if (!this.lifecycleAllowsConnection()) return;
     return this.open();
@@ -224,7 +205,6 @@ export class UnifiedMessageClient implements MessageClient {
 
   async disconnect(): Promise<void> {
     this.requestedConnection = false;
-    this.cancelDirectoryRetry();
     this.stopLifecycle?.();
     this.stopLifecycle = undefined;
     const inflight = this.connectPromise;
@@ -235,12 +215,8 @@ export class UnifiedMessageClient implements MessageClient {
       );
       this.runtimeConsumers.clear();
       await this.retireSession();
-      await this.checkpointWrite;
     } finally {
-      if (this.projectionStoreClosePending) {
-        this.projectionStoreClosePending = false;
-        await this.composition.projectionStore?.close?.();
-      }
+      this.abortRecoveryBuffer();
     }
   }
 
@@ -278,13 +254,12 @@ export class UnifiedMessageClient implements MessageClient {
     if (this.connectPromise) return this.connectPromise;
     if (!this.requestedConnection || !this.lifecycleAllowsConnection()) return;
     this.connectPromise = (async () => {
-      await this.restore();
       if (!this.requestedConnection || !this.lifecycleAllowsConnection()) return;
       this.setConnection("connecting");
       this.beginRecoveryBuffer();
       try {
         const session = await this.composition.realtime.connect({
-          onEvent: (raw, audience) => this.handleInbound(raw, audience),
+          onEvent: (raw) => this.handleInbound(raw),
           onState: (state) => this.handleRealtimeState(state),
         });
         if (!this.requestedConnection || !this.lifecycleAllowsConnection()) {
@@ -430,7 +405,20 @@ export class UnifiedMessageClient implements MessageClient {
     if (receipt.operationId !== command.operationId) {
       throw new Error("runtime method response operationId does not match the caller-owned operationId");
     }
-    if (receipt.outcome === "outcome_unknown" && this.projection.putOperation({
+    const now = new Date().toISOString();
+    const pendingStatus = receipt.outcome === "outcome_unknown"
+      ? {
+          status: "outcome_unknown" as const,
+          effectState: "outcome_unknown" as const,
+          terminal: true,
+          error: { code: "OUTCOME_UNKNOWN" } as const,
+        }
+      : {
+          status: "queued" as const,
+          effectState: "queued" as const,
+          terminal: false,
+        };
+    if (receipt.outcome !== "completed" && this.projection.putOperation({
       id: receipt.operationId,
       instanceId: command.instanceId,
       target: command.target,
@@ -439,12 +427,9 @@ export class UnifiedMessageClient implements MessageClient {
       contractRevision: receipt.contractRevision,
       transport: "service",
       sequence: "0",
-      status: "outcome_unknown",
-      effectState: "outcome_unknown",
-      terminal: true,
-      error: { code: "OUTCOME_UNKNOWN" },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      ...pendingStatus,
+      createdAt: now,
+      updatedAt: now,
       revision: "0",
     })) this.publishProjectionChange();
     return receipt;
@@ -479,18 +464,15 @@ export class UnifiedMessageClient implements MessageClient {
     return optimistic.id;
   }
 
-  private handleInbound(
-    raw: unknown,
-    audience: RealtimeDeliveryAudience = { kind: "private-control" },
-  ): void {
+  private handleInbound(raw: unknown): void {
     if (this.recoveryBuffering) {
-      this.bufferedInbound.push({ raw, audience });
+      this.bufferedInbound.push(raw);
       return;
     }
-    this.processInbound(raw, audience);
+    this.processInbound(raw);
   }
 
-  private processInbound(raw: unknown, audience: RealtimeDeliveryAudience): void {
+  private processInbound(raw: unknown): void {
     let event: AnyRealtimeEventV1;
     try {
       event = decodeRealtimeEvent(raw);
@@ -498,80 +480,33 @@ export class UnifiedMessageClient implements MessageClient {
       this.failInbound(errorMessage(error));
       return;
     }
-    if (!isAudienceCompatible(event, audience)) {
-      this.failInbound(
-        `realtime audience contract violation: ${event.type} on ${audience.kind}`,
-      );
-      return;
-    }
-    if (event.type === "runtime.dispatch.failed") {
-      if (!this.ephemeralDedupe.accept(event)) return;
-      if (this.recoveryBatching) {
-        this.deferredListenerEvents.push(event);
-      } else {
-        this.dispatchEvent(event);
-      }
-      return;
-    }
-    const decision = evaluateScopedRealtimeEvent(this.scopedCursors, event, audience);
-    if (decision.action === "ignore_stale") {
-      this.reportRealtimeDrop(event, audience);
-      return;
-    }
-    if (decision.action === "rebase") {
-      if (this.recoveryBatching) {
-        this.failInbound(`buffered realtime gap requires reconnect: ${decision.reason}`);
-        return;
-      }
-      if (audience.kind === "private-control") {
-        this.failInbound(`private-control realtime gap requires a fresh authoritative reconnect: ${decision.reason}`);
-        return;
-      }
-      const conversationId = event.scope.conversationId;
-      if (!conversationId) {
-        this.recoveryError = `cannot recover realtime gap outside a conversation: ${decision.reason}`;
-        this.setConnection("failed");
-        return;
-      }
-      void this.watches.recoverScope(conversationId, event).then(({ commit, eventAccepted }) => {
-        if (!commit || !eventAccepted) return;
-        this.scopedCursors = withScopedRealtimeCursor(this.scopedCursors, audience, {
-          streamSequence: event.ordering.streamSequence,
-          historyGeneration: commit.conversation.historyGeneration,
-          projectionUid: event.ordering.projectionUid,
-          projectionEpoch: event.ordering.projectionEpoch,
-        });
-        // Recovery has already installed the authoritative projection. Persist
-        // it with the admitted event cursor as one crash-consistent checkpoint.
+    if (!this.eventDedupe.accept(event)) return;
+    const conversationId = event.scope.conversationId;
+    const before = this.projection.getSnapshot();
+    const result = this.watches.accept(event);
+    if (result === "message_delta_gap" && conversationId) {
+      void this.watches.recoverScope(conversationId, event).then(({ commit }) => {
+        if (!commit) return;
         this.publishProjectionChange();
-        if (
-          !event.ordering.historyGeneration
-          || event.ordering.historyGeneration === commit.conversation.historyGeneration
-        ) {
-          this.dispatchEvent(event);
-        }
+        this.dispatchEvent(event);
       }, (error) => {
         this.recoveryError = errorMessage(error);
-        this.setConnection("failed");
+        this.publishSnapshot();
       });
       return;
     }
-    const before = this.projection.getSnapshot();
-    this.scopedCursors = withScopedRealtimeCursor(this.scopedCursors, audience, decision.cursor);
-    const accepted = this.watches.accept(event);
     if (this.projection.getSnapshot() !== before) {
       this.publishProjectionChange();
-    } else {
-      // Cursor admission precedes dedupe logically, but durability is never
-      // split from the projection represented by that cursor.
-      this.persistCheckpoint();
     }
-    if (!accepted) return;
+    if (result === "stale") return;
     if (
       event.type === "inbox.conversation.available"
       || event.type === "inbox.conversation.unavailable"
     ) {
       this.requestPrivateDirectoryRefresh();
+    }
+    if (event.type === "operation.terminal") {
+      this.hydrateCreatedSessionConversation(event);
     }
     if (this.recoveryBatching) {
       this.deferredListenerEvents.push(event);
@@ -588,99 +523,6 @@ export class UnifiedMessageClient implements MessageClient {
       } catch {
         // Observers cannot block another observer or SDK state progression.
       }
-    }
-  }
-
-  /**
-   * Reports conversations the directory could not subscribe and schedules one
-   * retry for the whole directory.
-   *
-   * A refused conversation is not necessarily refused forever: authorization
-   * can be restored, and a transient server error looks identical at this
-   * layer. Retrying re-runs discovery, so a conversation that genuinely
-   * disappeared drops out of the directory instead of being retried forever.
-   * Backoff is exponential because the common cause — a conversation the
-   * caller is no longer a member of — persists until something upstream
-   * changes, and a tight loop would spend the connection on it.
-   */
-  private reportDirectorySubscriptionFailures(
-    failed: readonly DirectorySubscriptionFailure[],
-  ): void {
-    if (failed.length === 0) {
-      this.directoryRetryAttempt = 0;
-      this.cancelDirectoryRetry();
-      return;
-    }
-    const sink = this.composition.onDirectorySubscribeFailure;
-    if (sink) {
-      for (const failure of failed) {
-        try {
-          sink({
-            conversationId: failure.conversationId,
-            attempt: this.directoryRetryAttempt + 1,
-            error: failure.error,
-          });
-        } catch {
-          // A diagnostic sink must never alter subscription behaviour.
-        }
-      }
-    }
-    this.scheduleDirectoryRetry();
-  }
-
-  private scheduleDirectoryRetry(): void {
-    if (this.directoryRetryTimer !== undefined) return;
-    if (!this.requestedConnection) return;
-    const delay = Math.min(
-      DIRECTORY_RETRY_BASE_MS * 2 ** this.directoryRetryAttempt,
-      DIRECTORY_RETRY_MAX_MS,
-    );
-    this.directoryRetryAttempt++;
-    this.directoryRetryTimer = setTimeout(() => {
-      this.directoryRetryTimer = undefined;
-      if (!this.requestedConnection) return;
-      this.requestPrivateDirectoryRefresh();
-    }, delay);
-    // A pending retry must never hold a Node process open.
-    this.directoryRetryTimer.unref?.();
-  }
-
-  private cancelDirectoryRetry(): void {
-    if (this.directoryRetryTimer === undefined) return;
-    clearTimeout(this.directoryRetryTimer);
-    this.directoryRetryTimer = undefined;
-  }
-
-  /**
-   * Publishes the cursor comparison that rejected an event. Both sides of the
-   * comparison are included because "stale" is only meaningful against the
-   * cursor it lost to.
-   */
-  private reportRealtimeDrop(
-    event: AnyRealtimeEventV1,
-    audience: RealtimeDeliveryAudience,
-  ): void {
-    const sink = this.composition.onRealtimeDrop;
-    if (!sink) return;
-    const scope = realtimeScopeKey(audience);
-    const previous = audience.kind === "private-control"
-      ? this.scopedCursors.privateControl
-      : this.scopedCursors.conversations[audience.conversationId];
-    try {
-      sink({
-        reason: "ignore_stale",
-        eventId: event.eventId,
-        eventType: event.type,
-        scope,
-        conversationId: event.scope.conversationId,
-        messageId: event.scope.messageId,
-        incomingStreamSequence: event.ordering.streamSequence,
-        previousStreamSequence: previous?.streamSequence,
-        incomingEntityRevision: event.ordering.entityRevision,
-        previousEntityRevision: previous?.entityRevision,
-      });
-    } catch {
-      // A diagnostic sink must never alter delivery behaviour.
     }
   }
 
@@ -716,23 +558,18 @@ export class UnifiedMessageClient implements MessageClient {
         this.privateDirectoryRefreshRequested = false;
         if (this.composition.privateConversationDirectoryQuery) {
           const conversations = await this.recovery.discoverPrivateDirectory();
-          const { subscribed, failed } = await this.watches.setDirectoryConversations(
+          this.watches.setDirectoryConversations(
             conversations.map((conversation) => conversation.id),
           );
-          this.reportDirectorySubscriptionFailures(failed);
-          // Hydrating a conversation the SDK could not subscribe would seed the
-          // projection with a snapshot nothing will ever update again.
-          await this.recovery.recoverPrivateDirectoryProjection(
-            conversations.filter((conversation) => subscribed.has(conversation.id)),
-          );
+          await this.recovery.recoverPrivateDirectoryProjection(conversations);
         } else {
-          await this.watches.reauthorizeAll();
           await this.watches.recoverAll();
         }
+        await this.recoverPendingOperations();
         this.recoveryDirty = true;
         while (this.bufferedInbound.length > 0) {
           const batch = this.bufferedInbound.splice(0);
-          for (const { raw, audience } of batch) this.processInbound(raw, audience);
+          for (const raw of batch) this.processInbound(raw);
         }
       } while (this.privateDirectoryRefreshRequested);
       this.recoveryBuffering = false;
@@ -766,6 +603,38 @@ export class UnifiedMessageClient implements MessageClient {
     });
   }
 
+  private hydrateCreatedSessionConversation(
+    event: Extract<AnyRealtimeEventV1, { type: "operation.terminal" }>,
+  ): void {
+    const operation = event.data.operation;
+    if (
+      !isRecord(operation)
+      ||
+      operation.method !== "session.new"
+      || operation.status !== "succeeded"
+      || !isRecord(operation.result)
+      || typeof operation.result.conversationId !== "string"
+      || operation.result.conversationId.length === 0
+    ) return;
+    const conversationId = operation.result.conversationId;
+    const target = operation.target;
+    const agentId = event.scope.agentId
+      ?? (isRecord(target) && (target.scope === "agent" || target.scope === "conversation")
+        && typeof target.platformAgentId === "string"
+        ? target.platformAgentId
+        : undefined);
+    if (agentId) {
+      this.composition.conversationRoutes?.bindConversation(conversationId, agentId);
+    }
+    this.watches.includeDirectoryConversation(conversationId);
+    void this.watches.recoverScope(conversationId).then(({ commit }) => {
+      if (commit) this.publishProjectionChange();
+    }, (error) => {
+      this.recoveryError = errorMessage(error);
+      this.publishSnapshot();
+    });
+  }
+
   private abortRecoveryBuffer(): void {
     this.recoveryBuffering = false;
     this.recoveryBatching = false;
@@ -780,33 +649,13 @@ export class UnifiedMessageClient implements MessageClient {
     this.setConnection("failed");
   }
 
-  private async restore(): Promise<void> {
-    if (this.restored) return;
-    this.restored = true;
-    const persisted = await this.composition.projectionStore?.loadCheckpoint();
-    if (!persisted) return;
-    this.scopedCursors = persisted.cursors;
-    this.projection.replace(persisted.projection);
-    this.publishSnapshot();
-  }
-
-  private persistCheckpoint(): void {
-    if (this.recoveryBatching) {
-      this.recoveryDirty = true;
-      return;
-    }
-    const store = this.composition.projectionStore;
-    if (!store) return;
-    const checkpoint = {
-      projection: this.projection.getSnapshot(),
-      cursors: this.scopedCursors,
-    };
-    this.checkpointWrite = this.checkpointWrite
-      .then(() => store.commitCheckpoint(checkpoint))
-      .catch((error) => {
-        this.recoveryError = errorMessage(error);
-        this.setConnection("failed");
-      });
+  private async recoverPendingOperations(): Promise<void> {
+    const pending = Object.values(this.projection.getSnapshot().operations)
+      .filter((operation) => !operation.terminal);
+    await Promise.all(pending.map(async (operation) => {
+      const current = await this.composition.runtimeMethods.getOperation(operation.id);
+      this.projection.putOperation(current);
+    }));
   }
 
   private publishProjectionChange(): void {
@@ -814,7 +663,6 @@ export class UnifiedMessageClient implements MessageClient {
       this.recoveryDirty = true;
       return;
     }
-    this.persistCheckpoint();
     this.publishSnapshot();
   }
 
@@ -854,16 +702,6 @@ function matches(event: AnyRealtimeEventV1, filter: RealtimeListenFilter): boole
   return true;
 }
 
-function isAudienceCompatible(
-  event: AnyRealtimeEventV1,
-  audience: RealtimeDeliveryAudience,
-): boolean {
-  if (audience.kind === "private-control") {
-    return event.scope.conversationId === undefined;
-  }
-  return event.scope.conversationId === audience.conversationId;
-}
-
 function samePublicSnapshot(left: MessageClientSnapshot, right: MessageClientSnapshot): boolean {
   return left.connection === right.connection
     && left.recoveryError === right.recoveryError
@@ -893,6 +731,10 @@ function errorName(error: unknown): string | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "message-sdk operation failed";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requiredCurrentPrincipalId(composition: MessageClientComposition): string {

@@ -1,5 +1,5 @@
 export const RUNTIME_DISPATCH_CONTRACT_REVISION = "beeos.runtime-dispatch.v1" as const;
-export const RUNTIME_DISPATCH_CONTRACT_SHA256 = "6e4f6b6a60433ffe75ed2d2902c20ad651ac2058026819384d8a74a4a8b3525b" as const;
+export const RUNTIME_DISPATCH_CONTRACT_SHA256 = "a60bee8263d25bfe401b4820fb8cf8ca786f8a15c5605f7b6ec503bb108fb1a7" as const;
 
 export const RUNTIME_DISPATCH_FAILED_CODES = [
   "runtime_target_invalid",

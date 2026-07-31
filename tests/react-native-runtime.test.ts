@@ -482,12 +482,10 @@ describe("React Native Gateway composition", () => {
     const session = await opening;
     expect(composition.currentPrincipal.currentPrincipalId()).toBe("user:u1");
 
-    const watching = Promise.resolve(session.setConversationWatched("c1", true));
-    expect(realtimeMock.subscriptions[0].channel).toBe("conv:c1");
+    expect("setConversationWatched" in session).toBe(false);
     expect("publish" in session).toBe(false);
     expect("subscribe" in session).toBe(false);
-    realtimeMock.subscriptions[0].emit("subscribed");
-    await watching;
+    expect(realtimeMock.subscriptions).toHaveLength(0);
   });
 
   it("keeps an unmapped private inbox hint pending until an explicit watch binds it", async () => {
@@ -513,11 +511,6 @@ describe("React Native Gateway composition", () => {
         type: "inbox.conversation.available",
         scope: { tenantId: "t1" },
         actor: { kind: "service", id: "message-service" },
-        ordering: {
-          streamSequence: "1",
-          entityRevision: "1",
-          completeness: "full",
-        },
         correlation: {},
         occurredAt: at,
         data: { conversationId: "c1" },

@@ -14,7 +14,7 @@ import type {
   SendMessageReceipt,
   UpdateConversationCommand,
 } from "./facade/contracts.js";
-import type { JsonValue, RealtimeDeliveryAudience } from "./protocol/index.js";
+import type { JsonValue } from "./protocol/index.js";
 import {
   decodeRuntimeDispatchReceipt,
   RuntimeDispatchContractError,

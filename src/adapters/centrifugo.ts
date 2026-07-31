@@ -1,4 +1,3 @@
-import type { RealtimeDeliveryAudience } from "../protocol/index.js";
 import type {
   RealtimeConnectInput,
   RealtimeConnectionState,
@@ -19,14 +18,13 @@ interface InternalCentrifugeClient {
   connect(): Promise<void> | void;
   close(): Promise<void> | void;
   updateToken(token: string): Promise<void> | void;
-  setConversationWatched(conversationId: string, watched: boolean): Promise<void> | void;
 }
 
 interface InternalCentrifugeFactory {
   create(options: {
     url: string;
     token: string;
-    onEvent(event: unknown, audience: RealtimeDeliveryAudience): void;
+    onEvent(event: unknown): void;
     onState(state: RealtimeConnectionState): void;
     onRefresh(): Promise<void>;
     onError(error: unknown): void;
@@ -38,11 +36,7 @@ export interface CentrifugoSessionAdapterOptions {
   readonly factory: InternalCentrifugeFactory;
 }
 
-/**
- * Internal composition-root adapter. It owns exactly one physical WSS and
- * exposes only hidden watch registration; raw channels and publish are
- * structurally unavailable.
- */
+/** Owns one server-bound personal WSS. Raw subscribe and publish are absent. */
 export class CentrifugoSessionAdapter implements RealtimeSessionPort {
   private active?: {
     readonly client: InternalCentrifugeClient;
@@ -71,7 +65,7 @@ export class CentrifugoSessionAdapter implements RealtimeSessionPort {
     const client = this.options.factory.create({
       url: credentials.realtimeUrl,
       token: credentials.token,
-      onEvent: (event, audience) => { if (active && !active.closed) input.onEvent(event, audience); },
+      onEvent: (event) => { if (active && !active.closed) input.onEvent(event); },
       onState: (state) => {
         if (state === "connected") connectedStateObserved = true;
         if (active && !active.closed) input.onState(state);
@@ -93,7 +87,6 @@ export class CentrifugoSessionAdapter implements RealtimeSessionPort {
       },
     });
     const session: RealtimeSession = {
-      setConversationWatched: (id, watched) => client.setConversationWatched(id, watched),
       close: async () => {
         if (!active || active.closed) return;
         active.closed = true;

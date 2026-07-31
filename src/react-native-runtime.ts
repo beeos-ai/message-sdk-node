@@ -13,7 +13,6 @@ import type {
   MessageListPage,
   MessageProjection,
   OperationProjection,
-  ProjectionStore,
   SendMessageCommand,
   SendMessageReceipt,
   UpdateConversationCommand,
@@ -34,7 +33,6 @@ export interface ReactNativeMessageClientOptions {
    * principal_id before it can author optimistic rows.
    */
   readonly currentPrincipal: CurrentPrincipalPort;
-  readonly projectionStore?: ProjectionStore;
   readonly lifecycle?: LifecyclePort;
   readonly fetch?: typeof globalThis.fetch;
 }
@@ -58,7 +56,6 @@ export function createReactNativeMessageClientComposition(
       factory: createCentrifugeFactory(),
     }),
     currentPrincipal: credentials,
-    ...(options.projectionStore ? { projectionStore: options.projectionStore } : {}),
     ...(options.lifecycle ? { lifecycle: options.lifecycle } : {}),
   };
 }

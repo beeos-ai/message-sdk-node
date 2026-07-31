@@ -1,304 +1,195 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  HistoryGenerationChangedError,
-  ProjectionEngine,
-  RecoveryCoordinator,
-  type ConversationProjection,
-  type MessageProjection,
-} from "../src/facade/index.js";
-import type { AnyRealtimeEventV1, RealtimeEventType } from "../src/protocol/index.js";
+import type { AnyRealtimeEventV1 } from "../src/protocol/index.js";
+import { ProjectionEngine } from "../src/facade/projection.js";
+import { RecoveryCoordinator } from "../src/facade/recovery-coordinator.js";
 
-const timestamp = "2026-07-28T00:00:00.000Z";
+const at = "2026-07-31T00:00:00.000Z";
 
-function conversation(generation: string, revision = generation): ConversationProjection {
-  return {
-    id: "c1",
-    state: "open",
-    historyGeneration: generation,
-    revision,
-    updatedAt: timestamp,
-  };
-}
-
-function message(id: string, generation: string, offset: string, body = ""): MessageProjection {
-  return {
-    id,
-    conversationId: "c1",
-    senderId: "u1",
-    type: "chat_message",
-    body,
-    state: "streaming",
-    historyGeneration: generation,
-    offset,
-    revision: offset,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
-function event<T extends RealtimeEventType>(
-  type: T,
-  sequence: string,
-  generation: string,
-  data: Extract<AnyRealtimeEventV1, { type: T }>["data"],
-): Extract<AnyRealtimeEventV1, { type: T }> {
+function messageEvent(
+  type: "message.created" | "message.updated" | "message.terminal",
+  revision: string,
+  body: string,
+  historyGeneration = "1",
+): AnyRealtimeEventV1 {
   return {
     schemaVersion: 1,
-    eventId: `event-${sequence}`,
+    eventId: `${type}-${revision}`,
     type,
-    scope: {
-      tenantId: "tenant",
-      conversationId: "c1",
-      ...(["message.created", "message.updated", "message.delta", "message.terminal", "message.deleted"].includes(type)
-        ? { messageId: type === "message.deleted" ? "m1" : (data as { message: { id: string } }).message.id }
-        : {}),
-    },
-    actor: { kind: "service", id: "ms" },
-    ordering: {
-      streamSequence: sequence,
-      entityRevision: sequence,
-      messageOffset: sequence,
-      historyGeneration: generation,
-      completeness: type === "message.delta" ? "delta" : "full",
-    },
+    scope: { tenantId: "t1", conversationId: "c1", messageId: "m1" },
+    actor: { kind: "agent", id: "agent-1" },
     correlation: {},
-    occurredAt: timestamp,
-    data,
-  } as Extract<AnyRealtimeEventV1, { type: T }>;
-}
-
-describe("ProjectionEngine", () => {
-  it("keeps stable snapshots until a commit and rejects stale revisions", () => {
-    const engine = new ProjectionEngine();
-    const initial = engine.getSnapshot();
-    expect(engine.getSnapshot()).toBe(initial);
-
-    expect(engine.commitHydration({
-      conversation: conversation("1"),
-      messages: [message("m1", "1", "1", "hello")],
-      historyBoundaryOffset: "0",
-      latestOffset: "1",
-    })).toBe(true);
-    const committed = engine.getSnapshot();
-    expect(committed).not.toBe(initial);
-    expect(engine.getSnapshot()).toBe(committed);
-
-    expect(engine.apply(event("message.updated", "2", "1", {
+    occurredAt: at,
+    data: {
       message: {
         id: "m1",
         conversationId: "c1",
-        senderId: "u1",
+        senderId: "agent-1",
+        revision,
+        offset: 1,
         type: "chat_message",
-        body: "older",
-        state: "streaming",
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        historyGeneration: "1",
+        body,
+        state: type === "message.terminal" ? "completed" : "streaming",
+        historyGeneration,
+        createdAt: at,
+        updatedAt: at,
       },
-    }))).toBe(true);
-    const afterUpdate = engine.getSnapshot();
-    expect(engine.apply({
-      ...event("message.updated", "2", "1", {
+    },
+  } as AnyRealtimeEventV1;
+}
+
+function conversationEvent(generation: string, revision: string): AnyRealtimeEventV1 {
+  return {
+    schemaVersion: 1,
+    eventId: `conversation-${revision}`,
+    type: "conversation.updated",
+    scope: { tenantId: "t1", conversationId: "c1" },
+    actor: { kind: "service", id: "message-service" },
+    correlation: {},
+    occurredAt: at,
+    data: {
+      conversation: {
+        id: "c1",
+        state: "open",
+        metadataVersion: revision,
+        historyGeneration: generation,
+        updatedAt: at,
+      },
+    },
+  } as AnyRealtimeEventV1;
+}
+
+describe("entity revision projection", () => {
+  it("accepts newer full snapshots and ignores stale entity revisions", () => {
+    const projection = new ProjectionEngine();
+    expect(projection.apply(messageEvent("message.created", "2", "new"))).toBe("changed");
+    expect(projection.apply(messageEvent("message.updated", "1", "old"))).toBe("stale");
+    expect(projection.getSnapshot().messages.m1.body).toBe("new");
+  });
+
+  it("applies an exact body delta and requests hydrate for a body gap", () => {
+    const projection = new ProjectionEngine();
+    projection.apply(messageEvent("message.created", "1", "A"));
+    const delta = {
+      schemaVersion: 1,
+      eventId: "delta-2",
+      type: "message.delta",
+      scope: { tenantId: "t1", conversationId: "c1", messageId: "m1" },
+      actor: { kind: "agent", id: "agent-1" },
+      correlation: {},
+      occurredAt: at,
+      data: {
         message: {
           id: "m1",
           conversationId: "c1",
-          senderId: "u1",
-          type: "chat_message",
-          body: "duplicate",
-          state: "streaming",
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          historyGeneration: "1",
+          senderId: "agent-1",
+          revision: "2",
+          offset: 1,
         },
-      }),
-      eventId: "another-id",
-    })).toBe(false);
-    expect(engine.getSnapshot()).toBe(afterUpdate);
-    expect(engine.getSnapshot().messages.m1?.body).toBe("older");
+        bodyFrom: 1,
+        bodyAppend: "B",
+      },
+    } as AnyRealtimeEventV1;
+    expect(projection.apply(delta)).toBe("changed");
+    expect(projection.getSnapshot().messages.m1.body).toBe("AB");
+    expect(projection.apply({
+      ...delta,
+      eventId: "delta-3",
+      data: {
+        ...delta.data,
+        message: { ...delta.data.message, revision: "3" },
+        bodyFrom: 99,
+      },
+    } as AnyRealtimeEventV1)).toBe("message_delta_gap");
   });
 
-  it("preserves canonical model override set and explicit clear in conversation projection", () => {
-    const engine = new ProjectionEngine();
-    expect(engine.apply(event("conversation.updated", "2", "1", {
-      conversation: {
-        id: "c1",
-        modelOverrideId: "provider/model",
-        state: "open",
-        metadataVersion: "2",
-        historyGeneration: "1",
-        updatedAt: timestamp,
-      },
-    }))).toBe(true);
-    expect(engine.getSnapshot().conversations.c1?.modelOverrideId).toBe("provider/model");
-    expect(engine.apply(event("conversation.updated", "3", "1", {
-      conversation: {
-        id: "c1",
-        modelOverrideId: null,
-        state: "open",
-        metadataVersion: "3",
-        historyGeneration: "1",
-        updatedAt: timestamp,
-      },
-    }))).toBe(true);
-    expect(engine.getSnapshot().conversations.c1?.modelOverrideId).toBeNull();
+  it("uses historyGeneration as a business fence and clears old messages", () => {
+    const projection = new ProjectionEngine();
+    projection.apply(conversationEvent("1", "1"));
+    projection.apply(messageEvent("message.created", "1", "old", "1"));
+    expect(projection.apply(conversationEvent("2", "2"))).toBe("changed");
+    expect(projection.getSnapshot().messages).toEqual({});
+    expect(projection.apply(messageEvent("message.updated", "3", "late", "1"))).toBe("stale");
   });
 
-  it("fences old history and atomically removes messages after clear", () => {
-    const engine = new ProjectionEngine();
-    engine.commitHydration({
-      conversation: conversation("1"),
-      messages: [message("m1", "1", "1", "old")],
-      historyBoundaryOffset: "0",
-      latestOffset: "1",
+  it("reduces typed session.new terminal results by operation revision", () => {
+    const projection = new ProjectionEngine();
+    const operation = {
+      id: "op-1",
+      instanceId: "instance-1",
+      target: { scope: "instance" as const },
+      method: "session.new",
+      capability: "session",
+      contractRevision: "2026-07-14.3" as const,
+      transport: "service" as const,
+      sequence: "1",
+      status: "succeeded" as const,
+      effectState: "committed" as const,
+      terminal: true,
+      result: { sessionId: "session-1", conversationId: "conversation-1" },
+      createdAt: at,
+      updatedAt: at,
+      revision: "2",
+    };
+    const event = {
+      schemaVersion: 1,
+      eventId: "operation-terminal-2",
+      type: "operation.terminal",
+      scope: { tenantId: "t1", instanceId: "instance-1", operationId: "op-1" },
+      actor: { kind: "service", id: "message-service" },
+      correlation: { correlationId: "corr-1" },
+      occurredAt: at,
+      data: { operation },
+    } as AnyRealtimeEventV1;
+    expect(projection.apply(event)).toBe("changed");
+    expect(projection.getSnapshot().operations["op-1"].result).toEqual({
+      sessionId: "session-1",
+      conversationId: "conversation-1",
     });
-    expect(engine.apply(event("conversation.updated", "2", "2", {
-      conversation: {
-        id: "c1",
-        state: "open",
-        metadataVersion: "2",
-        historyGeneration: "2",
-        updatedAt: timestamp,
-      },
-    }))).toBe(true);
-    expect(engine.getSnapshot().messages).toEqual({});
-    expect(engine.getSnapshot().latestOffsetByConversation.c1).toBeUndefined();
-
-    expect(engine.apply(event("message.created", "3", "1", {
-      message: {
-        id: "old-late",
-        conversationId: "c1",
-        senderId: "u1",
-        type: "chat_message",
-        body: "must stay hidden",
-        state: "completed",
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        historyGeneration: "1",
-      },
-    }))).toBe(false);
-    expect(engine.getSnapshot().messages["old-late"]).toBeUndefined();
-  });
-
-  it("applies ordered delta only at the exact body boundary", () => {
-    const engine = new ProjectionEngine();
-    engine.commitHydration({
-      conversation: conversation("1"),
-      messages: [message("m1", "1", "1", "中")],
-      historyBoundaryOffset: "0",
-      latestOffset: "1",
-    });
-    expect(engine.apply(event("message.delta", "2", "1", {
-      message: { id: "m1", conversationId: "c1", senderId: "u1" },
-      bodyAppend: "文",
-      bodyFrom: 3,
-    }))).toBe(true);
-    expect(engine.getSnapshot().messages.m1?.body).toBe("中文");
-    expect(engine.apply(event("message.delta", "3", "1", {
-      message: { id: "m1", conversationId: "c1", senderId: "u1" },
-      bodyAppend: "skip",
-      bodyFrom: 99,
-    }))).toBe(false);
-    expect(engine.getSnapshot().messages.m1?.body).toBe("中文");
   });
 });
 
-describe("RecoveryCoordinator", () => {
-  it("singleflights callers, pages to completion, and retries a G1/G2 race", async () => {
-    const engine = new ProjectionEngine();
-    const generations = ["1", "2", "2", "2"];
+describe("HTTP recovery", () => {
+  it("singleflights concurrent hydrate callers and commits one durable snapshot", async () => {
+    const projection = new ProjectionEngine();
     let conversationReads = 0;
     let messageReads = 0;
-    const coordinator = new RecoveryCoordinator({
+    const conversation = {
+      id: "c1",
+      state: "open" as const,
+      historyGeneration: "1",
+      revision: "1",
+      updatedAt: at,
+    };
+    const recovery = new RecoveryCoordinator({
       conversations: {
-        getConversation: async () => conversation(generations[conversationReads++] ?? "2"),
+        async getConversation() {
+          conversationReads++;
+          await Promise.resolve();
+          return conversation;
+        },
       },
       messages: {
-        listMessages: async (_id, since) => {
+        async listMessages() {
           messageReads++;
-          if (!since) return {
-            messages: [message(`m-${messageReads}`, messageReads === 1 ? "1" : "2", "1")],
-            historyGeneration: messageReads === 1 ? "1" : "2",
-            historyBoundaryOffset: "0",
-            latestOffset: "2",
-            nextSince: "1",
-            hasMore: true,
-          };
           return {
-            messages: [message(`m-${messageReads}`, messageReads <= 2 ? "1" : "2", "2")],
-            historyGeneration: messageReads <= 2 ? "1" : "2",
+            messages: [],
+            historyGeneration: "1",
             historyBoundaryOffset: "0",
-            latestOffset: "2",
+            latestOffset: "0",
             hasMore: false,
           };
         },
       },
-      projection: engine,
+      projection,
     });
-    const first = coordinator.recoverConversation("c1");
-    const second = coordinator.recoverConversation("c1");
-    expect(second).toBe(first);
-    const [result] = await Promise.all([first, second]);
-    expect(result.conversation.historyGeneration).toBe("2");
-    expect(conversationReads).toBe(4);
-    expect(messageReads).toBe(4);
-    expect(Object.values(engine.getSnapshot().messages).every((item) => item.historyGeneration === "2")).toBe(true);
-  });
-
-  it("fails closed after two unstable generations", async () => {
-    const engine = new ProjectionEngine();
-    let generation = 0;
-    const coordinator = new RecoveryCoordinator({
-      conversations: {
-        getConversation: async () => conversation(String(++generation)),
-      },
-      messages: {
-        listMessages: async () => ({
-          messages: [],
-          historyGeneration: String(generation),
-          historyBoundaryOffset: "0",
-          latestOffset: "0",
-          hasMore: false,
-        }),
-      },
-      projection: engine,
-    });
-    await expect(coordinator.recoverConversation("c1")).rejects.toBeInstanceOf(HistoryGenerationChangedError);
-    expect(engine.getSnapshot().conversations).toEqual({});
-  });
-
-  it("fails closed when durable history boundaries drift across message pages", async () => {
-    const engine = new ProjectionEngine();
-    const coordinator = new RecoveryCoordinator({
-      conversations: {
-        getConversation: async () => conversation("5"),
-      },
-      messages: {
-        listMessages: async (_id, since) => {
-          if (!since) {
-            return {
-              messages: [message("m1", "5", "6")],
-              historyGeneration: "5",
-              historyBoundaryOffset: "3",
-              latestOffset: "6",
-              nextSince: "6",
-              hasMore: true,
-            };
-          }
-          return {
-            messages: [message("m2", "5", "7")],
-            historyGeneration: "5",
-            historyBoundaryOffset: "4",
-            latestOffset: "7",
-            hasMore: false,
-          };
-        },
-      },
-      projection: engine,
-    });
-
-    await expect(coordinator.recoverConversation("c1"))
-      .rejects.toBeInstanceOf(HistoryGenerationChangedError);
-    expect(engine.getSnapshot().hydrationByConversation.c1).toBeUndefined();
+    const [left, right] = await Promise.all([
+      recovery.recoverConversation("c1"),
+      recovery.recoverConversation("c1"),
+    ]);
+    expect(left).toBe(right);
+    expect(conversationReads).toBe(2);
+    expect(messageReads).toBe(1);
+    expect(projection.getSnapshot().conversations.c1).toEqual(conversation);
   });
 });

@@ -48,7 +48,7 @@
     },
     "correlation": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "properties": {
         "requestId": { "type": "string", "minLength": 1 },
         "correlationId": { "type": "string", "minLength": 1 },
@@ -59,14 +59,13 @@
     },
     "realtimeEvent": {
       "type": "object",
-      "additionalProperties": false,
+      "additionalProperties": true,
       "required": [
         "schemaVersion",
         "eventId",
         "type",
         "scope",
         "actor",
-        "ordering",
         "correlation",
         "occurredAt",
         "data"
@@ -77,7 +76,7 @@
         "type": { "const": "runtime.dispatch.failed" },
         "scope": {
           "type": "object",
-          "additionalProperties": false,
+          "additionalProperties": true,
           "required": ["tenantId", "conversationId", "messageId"],
           "properties": {
             "tenantId": { "type": "string", "minLength": 1 },
@@ -87,20 +86,11 @@
         },
         "actor": {
           "type": "object",
-          "additionalProperties": false,
+          "additionalProperties": true,
           "required": ["kind", "id"],
           "properties": {
             "kind": { "const": "service" },
             "id": { "const": "message-service" }
-          }
-        },
-        "ordering": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["streamSequence", "completeness"],
-          "properties": {
-            "streamSequence": { "const": "0" },
-            "completeness": { "const": "delta" }
           }
         },
         "correlation": { "$ref": "#/$defs/correlation" },

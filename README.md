@@ -3,7 +3,7 @@
 BeeOS's unified conversation, message, runtime-method, and realtime client.
 
 ```bash
-npm install --save-exact @beeos-ai/message-sdk@2.0.0
+npm install --save-exact @beeos-ai/message-sdk@2.0.5
 ```
 
 ## One public client
@@ -31,14 +31,16 @@ await client.messages.send({
 });
 ```
 
-The application composition root supplies narrow HTTPS, realtime-session,
-projection-store, and lifecycle ports. Raw channels, Centrifugo, EventSource,
-tokens, and transport fallback are not part of the root API.
+The application composition root supplies narrow HTTPS, realtime-session, and
+lifecycle ports. Raw channels, Centrifugo, EventSource, tokens, and transport
+fallback are not part of the root API.
 
-`watch()` registers the hidden logical subscription before its generation-
-fenced HTTP hydrate. The SDK owns projection, dedupe, reconnect recovery, and
-the single physical WSS session. UI and agent code consume `getSnapshot()`,
-`subscribe()`, and filtered `listen()` events.
+`watch()` is a local ref-count plus generation-fenced HTTP hydrate. It never
+changes the physical WSS subscription. The server binds the one connection to
+the caller's personal inbox; `conversationId` is only an event scope and local
+`listen()` filter. The SDK owns projection, process-local eventId dedupe, and
+HTTP recovery. UI and agent code consume `getSnapshot()`, `subscribe()`, and
+filtered `listen()` events.
 
 ## Node Message Service composition
 
@@ -85,13 +87,13 @@ const client = createMessageClient(createReactNativeMessageClientComposition({
   gatewayUrl,
   accessTokenProvider,
   currentPrincipal,
-  projectionStore,
   lifecycle,
 }));
 ```
 
 The messaging-token response pins `currentPrincipal`, and the builder owns the
-single physical WSS plus hidden server-authorized conversation subscriptions.
+single physical server-bound personal WSS. There are no dynamic conversation
+subscriptions and no realtime cursor/checkpoint store.
 One login-scoped client is shared by all agents and conversations. Mobile
 passes the explicit agent target through `listForAgent`, `create`, `watch`, and
 `messages.send`; the composition's conversation-route registry rejects

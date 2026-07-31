@@ -3,12 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => ({
   instances: [] as Array<{
     handlers: Map<string, (ctx: any) => void>;
-    subscriptions: Map<string, unknown>;
-    emit(name: string, ctx?: any): void;
-  }>,
-  subscriptions: [] as Array<{
-    channel: string;
-    handlers: Map<string, (ctx: any) => void>;
+    newSubscriptionCalls: string[];
     emit(name: string, ctx?: any): void;
   }>,
 }));
@@ -16,14 +11,13 @@ const mock = vi.hoisted(() => ({
 vi.mock("centrifuge", () => ({
   Centrifuge: class {
     readonly handlers = new Map<string, (ctx: any) => void>();
-    readonly subscriptions = new Map<string, unknown>();
+    readonly newSubscriptionCalls: string[] = [];
     constructor() {
-      const instance = {
+      mock.instances.push({
         handlers: this.handlers,
-        subscriptions: this.subscriptions,
+        newSubscriptionCalls: this.newSubscriptionCalls,
         emit: (name: string, ctx: any = {}) => this.handlers.get(name)?.(ctx),
-      };
-      mock.instances.push(instance);
+      });
     }
     on(name: string, handler: (ctx: any) => void) {
       this.handlers.set(name, handler);
@@ -33,50 +27,28 @@ vi.mock("centrifuge", () => ({
     disconnect() {}
     setToken() {}
     newSubscription(channel: string) {
-      if (this.subscriptions.has(channel)) {
-        throw new Error(`Subscription to the channel ${channel} already exists`);
-      }
-      const handlers = new Map<string, (ctx: any) => void>();
-      const value = {
-        channel,
-        handlers,
-        emit: (name: string, ctx: any = {}) => handlers.get(name)?.(ctx),
-      };
-      mock.subscriptions.push(value);
-      const subscription = {
-        on(name: string, handler: (ctx: any) => void) { handlers.set(name, handler); },
-        subscribe() {},
-        unsubscribe() {},
-        removeAllListeners() {},
-      };
-      this.subscriptions.set(channel, subscription);
-      return subscription;
-    }
-    removeSubscription(subscription: unknown) {
-      for (const [channel, current] of this.subscriptions) {
-        if (current === subscription) this.subscriptions.delete(channel);
-      }
+      this.newSubscriptionCalls.push(channel);
+      throw new Error("dynamic subscriptions are forbidden");
     }
   },
 }));
 
 import { createNodeCentrifugeFactory } from "../src/node-runtime.js";
 
-beforeEach(() => {
-  mock.instances.splice(0);
-  mock.subscriptions.splice(0);
-});
+beforeEach(() => mock.instances.splice(0));
 
-function options() {
+function fixture() {
   const states: string[] = [];
+  const events: unknown[] = [];
   const errors: unknown[] = [];
   return {
     states,
+    events,
     errors,
     value: {
       url: "wss://realtime.example/connection/websocket",
-      token: "token",
-      onEvent() {},
+      token: "server-bound-personal-token",
+      onEvent(event: unknown) { events.push(event); },
       onState(state: "connecting" | "connected" | "disconnected" | "reconnecting" | "failed") {
         states.push(state);
       },
@@ -86,122 +58,42 @@ function options() {
   };
 }
 
-describe("Node Centrifugo physical connection contract", () => {
-  it("does not resolve connect until the first real connected event", async () => {
-    const fixture = options();
-    const client = createNodeCentrifugeFactory().create(fixture.value);
+describe("personal Centrifugo transport", () => {
+  it("waits for the physical connected event and consumes connection publications", async () => {
+    const state = fixture();
+    const client = createNodeCentrifugeFactory().create(state.value);
     let resolved = false;
     const opening = Promise.resolve(client.connect()).then(() => { resolved = true; });
     await Promise.resolve();
     expect(resolved).toBe(false);
-
     mock.instances[0].emit("connected");
     await opening;
-    expect(resolved).toBe(true);
-    expect(fixture.states).toEqual(["connected"]);
-
-    // Later reconnect notifications do not re-settle the first-connect gate.
-    mock.instances[0].emit("connected");
-    expect(fixture.states).toEqual(["connected", "connected"]);
+    mock.instances[0].emit("publication", { data: { eventId: "evt-1" } });
+    expect(state.events).toEqual([{ eventId: "evt-1" }]);
+    expect(mock.instances[0].newSubscriptionCalls).toEqual([]);
+    expect("setConversationWatched" in client).toBe(false);
+    expect("publish" in client).toBe(false);
   });
 
-  it("does not turn a post-connect recoverable error into a fatal close", async () => {
-    const fixture = options();
-    const client = createNodeCentrifugeFactory().create(fixture.value);
+  it("reports reconnect state without creating logical subscriptions", async () => {
+    const state = fixture();
+    const client = createNodeCentrifugeFactory().create(state.value);
     const opening = Promise.resolve(client.connect());
     mock.instances[0].emit("connected");
     await opening;
-
-    mock.instances[0].emit("error", { error: new Error("recoverable transport advisory") });
     mock.instances[0].emit("connecting");
     mock.instances[0].emit("connected");
-    expect(fixture.errors).toEqual([]);
-    expect(fixture.states).toEqual(["connected", "reconnecting", "connected"]);
+    expect(state.states).toEqual(["connected", "reconnecting", "connected"]);
+    expect(mock.instances[0].newSubscriptionCalls).toEqual([]);
   });
 
-  it("rejects and forwards an error received before first connected", async () => {
-    const fixture = options();
-    const client = createNodeCentrifugeFactory().create(fixture.value);
+  it("fails the first-connect gate closed", async () => {
+    const state = fixture();
+    const client = createNodeCentrifugeFactory().create(state.value);
     const opening = Promise.resolve(client.connect());
     const failure = new Error("handshake rejected");
     mock.instances[0].emit("error", { error: failure });
     await expect(opening).rejects.toBe(failure);
-    expect(fixture.errors).toEqual([failure]);
-  });
-
-  it("rejects a disconnect received before first connected", async () => {
-    const fixture = options();
-    const client = createNodeCentrifugeFactory().create(fixture.value);
-    const opening = Promise.resolve(client.connect());
-    mock.instances[0].emit("disconnected", { reason: "transport closed" });
-    await expect(opening).rejects.toThrow("disconnected before connected");
-  });
-
-  it("uses the hidden conv namespace and fails a server authorization rejection closed", async () => {
-    const fixture = options();
-    const client = createNodeCentrifugeFactory().create(fixture.value);
-    const opening = Promise.resolve(client.connect());
-    mock.instances[0].emit("connected");
-    await opening;
-
-    const watch = Promise.resolve(client.setConversationWatched("guessed-id", true));
-    expect(mock.subscriptions[0].channel).toBe("conv:guessed-id");
-    const denied = new Error("permission denied");
-    mock.subscriptions[0].emit("error", { error: denied });
-    await expect(watch).rejects.toBe(denied);
-  });
-
-  it("removes a rejected subscription from Centrifuge before an explicit retry", async () => {
-    const fixture = options();
-    const client = createNodeCentrifugeFactory().create(fixture.value);
-    const opening = Promise.resolve(client.connect());
-    mock.instances[0].emit("connected");
-    await opening;
-
-    const first = Promise.resolve(client.setConversationWatched("retry-id", true));
-    mock.subscriptions[0].emit("unsubscribed", { code: 403, reason: "denied" });
-    await expect(first).rejects.toThrow("conversation subscription rejected (403): denied");
-    expect(mock.instances[0].subscriptions.size).toBe(0);
-
-    const retry = Promise.resolve(client.setConversationWatched("retry-id", true));
-    expect(mock.subscriptions[1].channel).toBe("conv:retry-id");
-    mock.subscriptions[1].emit("subscribed");
-    await expect(retry).resolves.toBeUndefined();
-  });
-
-  it("cancels a pending authorization wait when the logical watch is released", async () => {
-    const fixture = options();
-    const client = createNodeCentrifugeFactory().create(fixture.value);
-    const opening = Promise.resolve(client.connect());
-    mock.instances[0].emit("connected");
-    await opening;
-
-    const watch = Promise.resolve(client.setConversationWatched("pending-id", true));
-    await client.setConversationWatched("pending-id", false);
-    await expect(watch).rejects.toThrow("cancelled before authorization");
-  });
-
-  it("requires a fresh subscribed authorization barrier after physical reconnect", async () => {
-    const fixture = options();
-    const client = createNodeCentrifugeFactory().create(fixture.value);
-    const opening = Promise.resolve(client.connect());
-    mock.instances[0].emit("connected");
-    await opening;
-
-    const initial = Promise.resolve(client.setConversationWatched("c1", true));
-    mock.subscriptions[0].emit("subscribed");
-    await initial;
-
-    mock.instances[0].emit("disconnected", { reason: "network" });
-    const reauthorized = Promise.resolve(client.setConversationWatched("c1", true));
-    let ready = false;
-    void reauthorized.then(() => { ready = true; });
-    mock.instances[0].emit("connected");
-    await Promise.resolve();
-    expect(ready).toBe(false);
-
-    mock.subscriptions[0].emit("subscribed");
-    await reauthorized;
-    expect(ready).toBe(true);
+    expect(state.errors).toEqual([failure]);
   });
 });

@@ -28,6 +28,12 @@ export interface ConversationHydrationCommit {
   readonly latestOffset: string;
 }
 
+export type ProjectionApplyResult =
+  | "changed"
+  | "stale"
+  | "message_delta_gap"
+  | "ignored";
+
 export class ProjectionEngine {
   private snapshot: DomainProjectionSnapshot;
 
@@ -121,12 +127,23 @@ export class ProjectionEngine {
     return changed || staleIds.length > 0;
   }
 
-  apply(event: AnyRealtimeEventV1): boolean {
+  apply(event: AnyRealtimeEventV1): ProjectionApplyResult {
+    try {
+      return this.applyKnown(event);
+    } catch {
+      // The transport decoder deliberately accepts additive and unknown
+      // fields. A malformed known payload is ignored by the reducer instead
+      // of crashing the application process.
+      return "ignored";
+    }
+  }
+
+  private applyKnown(event: AnyRealtimeEventV1): ProjectionApplyResult {
     let changed = false;
     switch (event.type) {
       case "conversation.created":
       case "conversation.updated":
-        changed = this.applyConversation(event.data.conversation, event.ordering.entityRevision);
+        changed = this.applyConversation(event.data.conversation);
         break;
       case "conversation.deleted":
         changed = this.deleteConversation(event.data.conversationId);
@@ -134,28 +151,23 @@ export class ProjectionEngine {
       case "message.created":
       case "message.updated":
       case "message.terminal":
-        changed = this.applyMessage(event.data.message, event.ordering.messageOffset, event.ordering.entityRevision);
+        changed = this.applyMessage(event.data.message);
         break;
       case "message.delta":
-        changed = this.applyDelta(event);
-        break;
+        return this.applyDelta(event);
       case "message.deleted":
         changed = this.deleteMessage(event.data.messageId, event.scope.conversationId);
         break;
       case "operation.started":
       case "operation.progress":
       case "operation.terminal":
-        changed = this.applyOperation(
-          event.data.operation,
-          event.ordering.entityRevision,
-          event.scope.instanceId,
-        );
+        changed = this.applyOperation(event.data.operation, event.scope.instanceId);
         break;
       default:
-        break;
+        return "ignored";
     }
 
-    return changed;
+    return changed ? "changed" : "stale";
   }
 
   putOptimisticMessage(message: MessageProjection): boolean {
@@ -232,11 +244,7 @@ export class ProjectionEngine {
       : this.snapshot.latestOffsetByConversation;
     const hydrationByConversation = generationChanged
       ? withoutKey(this.snapshot.hydrationByConversation, value.id)
-      : advanceHydrationProof(
-          this.snapshot.hydrationByConversation,
-          value.id,
-          { conversationRevision: incoming.revision },
-        );
+      : this.snapshot.hydrationByConversation;
     this.snapshot = freezeSnapshot({
       ...this.snapshot,
       conversations: { ...this.snapshot.conversations, [value.id]: freeze(incoming) },
@@ -259,12 +267,14 @@ export class ProjectionEngine {
     return true;
   }
 
-  private applyMessage(value: RealtimeMessage, offset?: string, revision?: string): boolean {
-    if (!offset) return false;
+  private applyMessage(value: RealtimeMessage): boolean {
     const conversation = this.snapshot.conversations[value.conversationId];
     if (conversation && conversation.historyGeneration !== value.historyGeneration) return false;
-    const incoming = messageFromRealtime(value, offset, revision);
     const current = this.snapshot.messages[value.id];
+    const offset = value.offset === undefined
+      ? current?.offset ?? "0"
+      : String(value.offset);
+    const incoming = messageFromRealtime(value, offset);
     if (current && compareDecimal(current.revision, incoming.revision) >= 0) return false;
     const messages = { ...this.snapshot.messages };
     for (const [localId, message] of Object.entries(messages)) {
@@ -274,42 +284,32 @@ export class ProjectionEngine {
     this.snapshot = freezeSnapshot({
       ...this.snapshot,
       messages,
-      latestOffsetByConversation: {
-        ...this.snapshot.latestOffsetByConversation,
-        [value.conversationId]: maxDecimal(
-          this.snapshot.latestOffsetByConversation[value.conversationId] ?? "0",
-          incoming.offset,
-        ),
-      },
-      hydrationByConversation: advanceHydrationProof(
-        this.snapshot.hydrationByConversation,
-        value.conversationId,
-        { latestOffset: incoming.offset },
-      ),
     });
     return true;
   }
 
-  private applyDelta(event: Extract<AnyRealtimeEventV1, { type: "message.delta" }>): boolean {
+  private applyDelta(
+    event: Extract<AnyRealtimeEventV1, { type: "message.delta" }>,
+  ): ProjectionApplyResult {
     const id = event.data.message.id;
     const current = this.snapshot.messages[id];
-    if (!current) return false;
-    const offset = event.ordering.messageOffset;
-    if (!offset) return false;
-    if (event.ordering.historyGeneration && current.historyGeneration !== event.ordering.historyGeneration) return false;
-    const revision = event.ordering.entityRevision ?? event.ordering.streamSequence;
-    if (compareDecimal(current.revision, revision) >= 0) return false;
+    if (!current) return "message_delta_gap";
+    const offset = event.data.message.offset === undefined
+      ? current.offset
+      : String(event.data.message.offset);
+    const revision = event.data.message.revision;
+    if (compareDecimal(current.revision, revision) >= 0) return "stale";
     const reduced = applyWireFrame(snapshotFromBody(current.body), {
       event: "message.delta",
       body_from: event.data.bodyFrom,
       body_chunk: event.data.bodyAppend,
     });
-    if (reduced.result === "rebase") return false;
+    if (reduced.result === "rebase") return "message_delta_gap";
     const nextBody = snapshotBody(reduced.snapshot);
     const unchanged = nextBody === current.body
       && event.data.parts === undefined
       && current.offset === offset;
-    if (unchanged) return false;
+    if (unchanged) return "stale";
     const next: MessageProjection = {
       ...current,
       body: nextBody,
@@ -321,20 +321,8 @@ export class ProjectionEngine {
     this.snapshot = freezeSnapshot({
       ...this.snapshot,
       messages: { ...this.snapshot.messages, [id]: freeze(next) },
-      latestOffsetByConversation: {
-        ...this.snapshot.latestOffsetByConversation,
-        [current.conversationId]: maxDecimal(
-          this.snapshot.latestOffsetByConversation[current.conversationId] ?? "0",
-          next.offset,
-        ),
-      },
-      hydrationByConversation: advanceHydrationProof(
-        this.snapshot.hydrationByConversation,
-        current.conversationId,
-        { latestOffset: next.offset },
-      ),
     });
-    return true;
+    return "changed";
   }
 
   private deleteMessage(messageId: string, conversationId?: string): boolean {
@@ -342,19 +330,16 @@ export class ProjectionEngine {
     this.snapshot = freezeSnapshot({
       ...this.snapshot,
       messages: withoutKey(this.snapshot.messages, messageId),
-      hydrationByConversation: conversationId
-        ? advanceHydrationProof(this.snapshot.hydrationByConversation, conversationId)
-        : this.snapshot.hydrationByConversation,
-      ...(conversationId ? {} : {}),
+      hydrationByConversation: this.snapshot.hydrationByConversation,
     });
     return true;
   }
 
-  private applyOperation(value: RealtimeOperation, revision?: string, instanceId?: string): boolean {
+  private applyOperation(value: RealtimeOperation, instanceId?: string): boolean {
     const incoming: OperationProjection = {
       ...value,
       instanceId: instanceId ?? value.instanceId,
-      revision: revision ?? "0",
+      revision: value.revision,
     };
     const current = this.snapshot.operations[value.id];
     if (current && compareDecimal(current.revision, incoming.revision) >= 0) return false;
@@ -380,7 +365,7 @@ export function conversationFromRealtime(value: RealtimeConversation, revision?:
   };
 }
 
-export function messageFromRealtime(value: RealtimeMessage, offset: string, revision?: string): MessageProjection {
+export function messageFromRealtime(value: RealtimeMessage, offset: string): MessageProjection {
   return {
     id: value.id,
     conversationId: value.conversationId,
@@ -394,7 +379,7 @@ export function messageFromRealtime(value: RealtimeMessage, offset: string, revi
     ...(value.stopReason === undefined ? {} : { stopReason: value.stopReason }),
     historyGeneration: value.historyGeneration,
     offset,
-    revision: revision ?? "0",
+    revision: value.revision,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };
