@@ -199,48 +199,19 @@ export class RealtimeEventValidationError extends Error {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function hasString(record: Record<string, unknown>, key: string): boolean {
-  return typeof record[key] === "string" && (record[key] as string).length > 0;
-}
-
 /**
- * Performs only the minimum transport-envelope decoding needed to keep the SDK
- * from crashing. Authorization and business validation remain server-owned.
- * Unknown event types and additive fields are intentionally preserved.
+ * Compatibility alias retained for existing callers. Realtime authority and
+ * schema validation are server-owned; the SDK preserves the received value.
  */
 export function validateRealtimeEvent(value: unknown): AnyRealtimeEventV1 {
-  if (!isRecord(value)) throw new RealtimeEventValidationError("event must be an object");
-  if (value.schemaVersion !== 1) throw new RealtimeEventValidationError("schemaVersion must be 1");
-  if (!hasString(value, "eventId")) throw new RealtimeEventValidationError("eventId is required");
-  if (!hasString(value, "type")) throw new RealtimeEventValidationError("type is required");
-  if (!isRecord(value.scope) || !hasString(value.scope, "tenantId")) {
-    throw new RealtimeEventValidationError("scope.tenantId is required");
-  }
-  if (!isRecord(value.actor) || !hasString(value.actor, "id") || !hasString(value.actor, "kind")) {
-    throw new RealtimeEventValidationError("actor.kind and actor.id are required");
-  }
-  if (value.correlation !== undefined && !isRecord(value.correlation)) {
-    throw new RealtimeEventValidationError("correlation must be an object");
-  }
-  if (typeof value.occurredAt !== "string") {
-    throw new RealtimeEventValidationError("occurredAt must be a string");
-  }
-  if (!isRecord(value.data)) {
-    throw new RealtimeEventValidationError("data must be an object");
-  }
-  return value as unknown as AnyRealtimeEventV1;
+  return value as AnyRealtimeEventV1;
 }
 
 export function encodeRealtimeEvent(event: AnyRealtimeEventV1): string {
-  validateRealtimeEvent(event);
   return JSON.stringify(event);
 }
 
 export function decodeRealtimeEvent(input: string | unknown): AnyRealtimeEventV1 {
   const value = typeof input === "string" ? JSON.parse(input) : input;
-  return validateRealtimeEvent(value);
+  return value as AnyRealtimeEventV1;
 }

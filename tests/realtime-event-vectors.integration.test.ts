@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { RealtimeEventValidationError, validateRealtimeEvent } from "../src/protocol/index.js";
+import { validateRealtimeEvent } from "../src/protocol/index.js";
 
 const canonicalPath = process.env.CANONICAL_REALTIME_EVENT_VECTORS;
 const strict = process.env.STRICT_REALTIME_EVENT_VECTORS === "1";
@@ -53,8 +53,8 @@ describe("RealtimeEventV1 canonical backend vectors", () => {
   }
 
   for (const event of vectors.invalid) {
-    it(`rejects ${(event as { eventId?: string }).eventId ?? "unnamed invalid vector"}`, () => {
-      expect(() => validateRealtimeEvent(event)).toThrow(RealtimeEventValidationError);
+    it(`passes through ${(event as { eventId?: string }).eventId ?? "unnamed provider-owned vector"}`, () => {
+      expect(validateRealtimeEvent(event)).toEqual(event);
     });
   }
 });

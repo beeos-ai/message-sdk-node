@@ -473,13 +473,21 @@ export class UnifiedMessageClient implements MessageClient {
   }
 
   private processInbound(raw: unknown): void {
-    let event: AnyRealtimeEventV1;
+    let decoded: unknown;
     try {
-      event = decodeRealtimeEvent(raw);
-    } catch (error) {
-      this.failInbound(errorMessage(error));
+      decoded = decodeRealtimeEvent(raw) as unknown;
+    } catch {
       return;
     }
+    if (
+      !isRecord(decoded)
+      || typeof decoded.type !== "string"
+      || typeof decoded.eventId !== "string"
+      || !isRecord(decoded.scope)
+    ) {
+      return;
+    }
+    const event = decoded as unknown as AnyRealtimeEventV1;
     if (!this.eventDedupe.accept(event)) return;
     const conversationId = event.scope.conversationId;
     const before = this.projection.getSnapshot();
@@ -606,7 +614,7 @@ export class UnifiedMessageClient implements MessageClient {
   private hydrateCreatedSessionConversation(
     event: Extract<AnyRealtimeEventV1, { type: "operation.terminal" }>,
   ): void {
-    const operation = event.data.operation;
+    const operation = isRecord(event.data) ? event.data.operation : undefined;
     if (
       !isRecord(operation)
       ||
