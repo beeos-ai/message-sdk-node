@@ -55,7 +55,12 @@ describe("Node Message Service composition route matrix", () => {
     const composition = createNodeMessageClientComposition(options());
     await composition.conversationCommand.createConversation({
       participants: ["user:u1", "agent:a1"],
-      title: "Created by session.new",
+      title: "Created by session/new",
+      metadata: {
+        source: "session/new",
+        attempt: 1,
+        flags: { hydrate: true },
+      },
       idempotencyKey: "session-new:operation-123",
     });
 
@@ -65,7 +70,12 @@ describe("Node Message Service composition route matrix", () => {
       key: "session-new:operation-123",
       body: {
         participants: ["user:u1", "agent:a1"],
-        title: "Created by session.new",
+        title: "Created by session/new",
+        metadata: {
+          source: "session/new",
+          attempt: 1,
+          flags: { hydrate: true },
+        },
       },
     }]);
   });
