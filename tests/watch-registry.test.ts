@@ -1,115 +1,115 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  ConversationWatchRegistry,
-  ProjectionEngine,
-  type ConversationHydrationCommit,
-  type MessageProjection,
-} from "../src/facade/index.js";
-import type { RealtimeEventV1 } from "../src/protocol/index.js";
+import type { AnyRealtimeEventV1 } from "../src/protocol/index.js";
+import { ProjectionEngine } from "../src/facade/projection.js";
+import { ConversationWatchRegistry } from "../src/facade/watch-registry.js";
 
-const at = "2026-07-28T00:00:00.000Z";
+const at = "2026-07-31T00:00:00.000Z";
 
-function message(id: string, offset: string): MessageProjection {
-  return {
-    id,
-    conversationId: "c1",
-    senderId: "u1",
-    type: "chat_message",
-    body: id,
-    state: "completed",
-    historyGeneration: "1",
-    offset,
-    revision: offset,
-    createdAt: at,
-    updatedAt: at,
-  };
-}
-
-function created(id: string, sequence: string): RealtimeEventV1<"message.created"> {
+function event(id: string, revision: string, body = id): AnyRealtimeEventV1 {
   return {
     schemaVersion: 1,
-    eventId: `event-${id}`,
+    eventId: `event-${id}-${revision}`,
     type: "message.created",
     scope: { tenantId: "t1", conversationId: "c1", messageId: id },
-    actor: { kind: "user", id: "u1" },
-    ordering: {
-      streamSequence: sequence,
-      entityRevision: sequence,
-      messageOffset: sequence,
-      historyGeneration: "1",
-      completeness: "full",
-    },
+    actor: { kind: "agent", id: "agent-1" },
     correlation: {},
     occurredAt: at,
     data: {
       message: {
         id,
         conversationId: "c1",
-        senderId: "u1",
+        senderId: "agent-1",
+        revision,
+        offset: 1,
         type: "chat_message",
-        body: id,
-        state: "completed",
+        body,
+        state: "streaming",
+        historyGeneration: "1",
         createdAt: at,
         updatedAt: at,
-        historyGeneration: "1",
       },
     },
-  };
+  } as AnyRealtimeEventV1;
 }
 
-describe("ConversationWatchRegistry", () => {
-  it("subscribes before hydrate, ref-counts, buffers and merges once", async () => {
+describe("local conversation watch registry", () => {
+  it("ref-counts one HTTP hydrate without changing transport subscriptions", async () => {
     const projection = new ProjectionEngine();
-    const subscriptionCalls: Array<[string, boolean]> = [];
-    let finishRecovery!: (commit: ConversationHydrationCommit) => void;
-    const recovery = new Promise<ConversationHydrationCommit>((resolve) => {
-      finishRecovery = resolve;
-    });
     let recoverCalls = 0;
     const registry = new ConversationWatchRegistry({
       projection,
-      getSession: () => ({
-        setConversationWatched: async (id, watched) => {
-          subscriptionCalls.push([id, watched]);
-        },
-        close: () => undefined,
-      }),
       recovery: {
-        recoverConversation: async () => {
+        async recoverConversation() {
           recoverCalls++;
-          const commit = await recovery;
+          const commit = {
+            conversation: {
+              id: "c1",
+              state: "open" as const,
+              historyGeneration: "1",
+              revision: "1",
+              updatedAt: at,
+            },
+            messages: [],
+            historyBoundaryOffset: "0",
+            latestOffset: "0",
+          };
           projection.commitHydration(commit);
           return commit;
         },
       },
     });
-
     const first = registry.watch("c1");
     const second = registry.watch("c1");
-    await Promise.resolve();
-    expect(subscriptionCalls).toEqual([["c1", true]]);
-    expect(registry.refCount("c1")).toBe(2);
-    expect(recoverCalls).toBe(1);
-
-    expect(registry.accept(created("m2", "2"))).toBe(true);
-    expect(projection.getSnapshot().messages.m2).toBeUndefined();
-    finishRecovery({
-      conversation: {
-        id: "c1", state: "open", historyGeneration: "1", revision: "1", updatedAt: at,
-      },
-      messages: [message("m1", "1")],
-      latestOffset: "1",
-    });
     await Promise.all([first.ready, second.ready]);
-    expect(Object.keys(projection.getSnapshot().messages).sort()).toEqual(["m1", "m2"]);
-
-    // Duplicate delivery within the authorized conversation is accepted once.
-    expect(registry.accept(created("m2", "2"))).toBe(false);
+    expect(recoverCalls).toBe(1);
+    expect(registry.refCount("c1")).toBe(2);
     first.release();
-    expect(subscriptionCalls).toEqual([["c1", true]]);
     second.release();
-    await Promise.resolve();
-    expect(subscriptionCalls).toEqual([["c1", true], ["c1", false]]);
+    expect(registry.refCount("c1")).toBe(0);
+  });
+
+  it("buffers personal-inbox events during hydrate and replays by entity revision", async () => {
+    const projection = new ProjectionEngine();
+    let resolve!: () => void;
+    const gate = new Promise<void>((done) => { resolve = done; });
+    const registry = new ConversationWatchRegistry({
+      projection,
+      recovery: {
+        async recoverConversation() {
+          await gate;
+          const commit = {
+            conversation: {
+              id: "c1",
+              state: "open" as const,
+              historyGeneration: "1",
+              revision: "1",
+              updatedAt: at,
+            },
+            messages: [],
+            historyBoundaryOffset: "0",
+            latestOffset: "0",
+          };
+          projection.commitHydration(commit);
+          return commit;
+        },
+      },
+    });
+    const watch = registry.watch("c1");
+    expect(registry.accept(event("m1", "2", "new"))).toBe("changed");
+    expect(registry.accept(event("m1", "1", "old"))).toBe("changed");
+    resolve();
+    await watch.ready;
+    expect(projection.getSnapshot().messages.m1.body).toBe("new");
+  });
+
+  it("projects authorized personal events even without a UI watch", () => {
+    const projection = new ProjectionEngine();
+    const registry = new ConversationWatchRegistry({
+      projection,
+      recovery: { recoverConversation: async () => { throw new Error("not called"); } },
+    });
+    expect(registry.accept(event("m1", "1"))).toBe("changed");
+    expect(projection.getSnapshot().messages.m1).toBeDefined();
   });
 });

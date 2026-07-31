@@ -54,38 +54,26 @@ describe("runtime dispatch canonical contract artifact", () => {
     }
   });
 
-  it("validates the exact ephemeral realtime event", () => {
+  it("decodes the minimal additive realtime envelope", () => {
     const event = {
       schemaVersion: 1,
       eventId: "dispatch-1",
       type: "runtime.dispatch.failed",
       scope: { tenantId: "tenant", conversationId: "c1", messageId: "m1" },
       actor: { kind: "service", id: "message-service" },
-      ordering: { streamSequence: "0", completeness: "delta" },
       correlation: { correlationId: "corr-1" },
       occurredAt: "2026-07-28T00:00:00.000Z",
       data: { status: "unconfirmed", code: "delivery_unconfirmed" },
     };
     expect(validateRealtimeEvent(event)).toEqual(event);
-    expect(() => validateRealtimeEvent({
+    expect(validateRealtimeEvent({
       ...event,
-      ordering: { ...event.ordering, entityRevision: "1" },
-    })).toThrow();
-    expect(() => validateRealtimeEvent({
-      ...event,
-      correlation: { correlationId: "" },
-    })).toThrow();
-    expect(() => validateRealtimeEvent({
-      ...event,
-      correlation: { correlationId: "corr-1", provider: "forbidden" },
-    })).toThrow();
-    expect(() => validateRealtimeEvent({
+      additive: "preserved",
+      correlation: { correlationId: "", provider: "preserved" },
+    })).toMatchObject({ additive: "preserved" });
+    expect(validateRealtimeEvent({
       ...event,
       occurredAt: "2026-07-28 00:00:00Z",
-    })).toThrow();
-    expect(() => validateRealtimeEvent({
-      ...event,
-      occurredAt: "2026-02-30T00:00:00Z",
-    })).toThrow();
+    })).toMatchObject({ occurredAt: "2026-07-28 00:00:00Z" });
   });
 });

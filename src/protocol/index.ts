@@ -11,7 +11,6 @@ export type {
   JsonValue,
   RealtimeActor,
   RealtimeActorKind,
-  RealtimeCompleteness,
   RealtimeCorrelation,
   RealtimeConversation,
   RealtimeEventDataMap,
@@ -19,9 +18,11 @@ export type {
   RealtimeEventV1,
   RealtimeMember,
   RealtimeMessage,
+  RealtimeMessageIdentity,
   RealtimeOperation,
-  RealtimeOrdering,
   RealtimeScope,
+  SessionNewRealtimeOperation,
+  SessionNewResult,
 } from "./realtime.js";
 export { RealtimeDedupe } from "./dedupe.js";
 export {
@@ -41,16 +42,3 @@ export type {
   RuntimeDispatchUnconfirmedCode,
 } from "./runtime-dispatch.js";
 export { SingleflightHydrator } from "./hydration.js";
-export {
-  RecoveryOwnership,
-  evaluateRealtimeEvent,
-  evaluateScopedRealtimeEvent,
-  realtimeScopeKey,
-  withScopedRealtimeCursor,
-} from "./recovery.js";
-export type {
-  RecoveryDecision,
-  RealtimeCursor,
-  RealtimeDeliveryAudience,
-  ScopedRealtimeCursors,
-} from "./recovery.js";
