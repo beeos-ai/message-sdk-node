@@ -123,6 +123,8 @@ export interface CreateConversationCommand {
   readonly participants: readonly string[];
   readonly title?: string;
   readonly metadata?: Readonly<Record<string, JsonValue>>;
+  /** Caller-owned key forwarded unchanged to the existing create endpoint. */
+  readonly idempotencyKey?: string;
 }
 
 export interface UpdateConversationCommand {

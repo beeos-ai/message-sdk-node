@@ -107,6 +107,38 @@ beforeEach(() => {
 });
 
 describe("React Native Gateway composition", () => {
+  it("forwards a caller-owned conversation create idempotency key unchanged", async () => {
+    const calls: Array<{ url: string; headers: Headers; body?: unknown }> = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        headers: new Headers(init?.headers),
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return json({ success: true, data: conversation("Created") }, 201);
+    });
+    const composition = createReactNativeMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      accessTokenProvider: async () => "access-token",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      fetch: fetchMock,
+    });
+
+    await composition.conversationCommand.createConversation({
+      agentId: "agent-a",
+      participants: ["user:u1", "agent-a"],
+      title: "Created",
+      idempotencyKey: "session-new:operation-123",
+    });
+
+    expect(calls[0]).toMatchObject({
+      url: "https://gateway.example/api/v1/agents/agent-a/conversations",
+      body: { title: "Created" },
+    });
+    expect(calls[0].headers.get("Idempotency-Key"))
+      .toBe("session-new:operation-123");
+  });
+
   it("shares one composition across explicit agent routes and rejects route aliasing", async () => {
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
