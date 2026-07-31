@@ -166,6 +166,27 @@ describe("personal-only UnifiedMessageClient", () => {
     expect(c1Events).toEqual(["event-c1"]);
   });
 
+  it("ignores legacy and non-business frames without failing the connection", async () => {
+    const state = fixture();
+    const client = createMessageClient(state.composition);
+    await client.connect();
+
+    state.input.onEvent({
+      type: "notification.created",
+      payload: { title: "legacy", additive: { nested: true } },
+    });
+    state.input.onEvent({ kind: "centrifugo.join", additive: true });
+    state.input.onEvent("not-json");
+
+    expect(client.getSnapshot()).toMatchObject({
+      connection: "connected",
+      conversations: {},
+      messages: {},
+      operations: {},
+    });
+    expect(client.getSnapshot().recoveryError).toBeUndefined();
+  });
+
   it("treats HTTP 202 as queued and reduces typed session.new terminal success", async () => {
     const state = fixture();
     const client = createMessageClient(state.composition);

@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  decodeRealtimeEvent,
-  RealtimeDedupe,
-  RealtimeEventValidationError,
-} from "../src/protocol/index.js";
+import { decodeRealtimeEvent, RealtimeDedupe } from "../src/protocol/index.js";
 
 const base = {
   schemaVersion: 1,
@@ -25,20 +21,20 @@ describe("personal realtime envelope", () => {
     expect("ordering" in decoded).toBe(false);
   });
 
-  it("requires only the crash-safe envelope", () => {
-    for (const invalid of [
-      null,
-      { ...base, schemaVersion: 2 },
-      { ...base, eventId: "" },
-      { ...base, type: "" },
-      { ...base, scope: {} },
-      { ...base, actor: {} },
-      { ...base, correlation: "not-an-object" },
-      { ...base, occurredAt: 123 },
-      { ...base, data: null },
-    ]) {
-      expect(() => decodeRealtimeEvent(invalid)).toThrow(RealtimeEventValidationError);
-    }
+  it("passes through legacy and unknown frames without schema gating", () => {
+    const legacy = {
+      type: "notification.created",
+      payload: { title: "kept", additive: { nested: true } },
+      transportHint: "legacy",
+    };
+    const future = {
+      ...base,
+      schemaVersion: 2,
+      type: "future.event.v2",
+      additive: { nested: [1, false, null] },
+    };
+    expect(decodeRealtimeEvent(legacy)).toEqual(legacy);
+    expect(decodeRealtimeEvent(JSON.stringify(future))).toEqual(future);
   });
 
   it("does not reject additive fields on known operation events", () => {
