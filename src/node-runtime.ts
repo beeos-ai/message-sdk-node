@@ -276,21 +276,13 @@ class NodeMessageHttpAdapter {
 
   async createConversation(command: CreateConversationCommand): Promise<ConversationProjection> {
     const auth = await this.credentials.http();
-    const metadata = command.metadata
-      ? Object.fromEntries(Object.entries(command.metadata).map(([key, value]) => {
-          if (typeof value !== "string") {
-            throw new Error("Message Service conversation metadata values must be strings");
-          }
-          return [key, value];
-        }))
-      : undefined;
     const raw = await this.request(
       "POST",
       "/api/v2/conversations",
       {
         participants: command.participants,
         ...(command.title === undefined ? {} : { title: command.title }),
-        ...(metadata ? { metadata } : {}),
+        ...(command.metadata === undefined ? {} : { metadata: command.metadata }),
       },
       command.idempotencyKey,
       auth,
