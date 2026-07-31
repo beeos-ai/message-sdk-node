@@ -33,6 +33,43 @@ afterEach(() => {
 });
 
 describe("Node Message Service composition route matrix", () => {
+  it("forwards a caller-owned conversation create idempotency key unchanged", async () => {
+    const calls: Array<{ url: string; method: string; key: string | null; body?: unknown }> = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        key: new Headers(init?.headers).get("Idempotency-Key"),
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return json({
+        id: "conversation-1",
+        participants: ["user:u1", "agent:a1"],
+        state: "open",
+        history_generation: 0,
+        metadata_version: 1,
+        updated_at: at,
+      }, 201);
+    }));
+
+    const composition = createNodeMessageClientComposition(options());
+    await composition.conversationCommand.createConversation({
+      participants: ["user:u1", "agent:a1"],
+      title: "Created by session.new",
+      idempotencyKey: "session-new:operation-123",
+    });
+
+    expect(calls).toEqual([{
+      url: `${base}/api/v2/conversations`,
+      method: "POST",
+      key: "session-new:operation-123",
+      body: {
+        participants: ["user:u1", "agent:a1"],
+        title: "Created by session.new",
+      },
+    }]);
+  });
+
   it("uses authoritative identity directories and cursor message pages", async () => {
     const requests: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
@@ -448,4 +485,3 @@ describe("Node HTTP message hydrate field mapping", () => {
     });
   });
 });
-

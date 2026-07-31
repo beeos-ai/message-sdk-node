@@ -5,6 +5,7 @@ import { CentrifugoSessionAdapter } from "./adapters/centrifugo.js";
 import { createCentrifugeFactory } from "./adapters/centrifuge-factory.js";
 import type {
   ConversationProjection,
+  CreateConversationCommand,
   ExecuteMethodReceipt,
   MessageClientComposition,
   MessageListPage,
@@ -273,11 +274,30 @@ class NodeMessageHttpAdapter {
     };
   }
 
-  async createConversation(
-    command: { participants: readonly string[]; title?: string; metadata?: Readonly<Record<string, JsonValue>> },
-  ): Promise<ConversationProjection> {
-    void command;
-    throw new Error("MS Node composition does not create conversations without a caller-owned idempotency key");
+  async createConversation(command: CreateConversationCommand): Promise<ConversationProjection> {
+    const auth = await this.credentials.http();
+    const metadata = command.metadata
+      ? Object.fromEntries(Object.entries(command.metadata).map(([key, value]) => {
+          if (typeof value !== "string") {
+            throw new Error("Message Service conversation metadata values must be strings");
+          }
+          return [key, value];
+        }))
+      : undefined;
+    const raw = await this.request(
+      "POST",
+      "/api/v2/conversations",
+      {
+        participants: command.participants,
+        ...(command.title === undefined ? {} : { title: command.title }),
+        ...(metadata ? { metadata } : {}),
+      },
+      command.idempotencyKey,
+      auth,
+    );
+    const value = conversation(raw);
+    this.generations.set(value.id, value.historyGeneration);
+    return value;
   }
 
   async updateConversation(command: UpdateConversationCommand): Promise<ConversationProjection> {

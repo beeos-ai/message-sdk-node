@@ -5,6 +5,7 @@ import type {
   ActiveOperationListPage,
   ConversationListPage,
   ConversationProjection,
+  CreateConversationCommand,
   CurrentPrincipalPort,
   ExecuteMethodCommand,
   ExecuteMethodReceipt,
@@ -157,12 +158,7 @@ class GatewayHttpAdapter {
     };
   }
 
-  async createConversation(command: {
-    agentId?: string;
-    participants: readonly string[];
-    title?: string;
-    metadata?: Readonly<Record<string, JsonValue>>;
-  }): Promise<ConversationProjection> {
+  async createConversation(command: CreateConversationCommand): Promise<ConversationProjection> {
     const agentId = command.agentId?.trim();
     if (!agentId || !command.participants.includes(agentId)) {
       throw new Error("Gateway conversation target does not match the composed agent");
@@ -179,6 +175,9 @@ class GatewayHttpAdapter {
       "POST",
       `/api/v1/agents/${segment(agentId)}/conversations`,
       { title: command.title ?? "", ...(metadata ? { metadata } : {}) },
+      command.idempotencyKey
+        ? { "Idempotency-Key": command.idempotencyKey }
+        : undefined,
     )), agentId);
     this.bindConversation(value.id, agentId);
     return value;
