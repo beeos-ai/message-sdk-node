@@ -20,7 +20,7 @@ function fixture() {
     id: "op-1",
     instanceId: "instance-1",
     target: { scope: "instance" },
-    method: "session.new",
+    method: "session/new",
     capability: "session",
     contractRevision: "2026-07-14.3",
     transport: "service",
@@ -187,7 +187,7 @@ describe("personal-only UnifiedMessageClient", () => {
     expect(client.getSnapshot().recoveryError).toBeUndefined();
   });
 
-  it("treats HTTP 202 as queued and reduces typed session.new terminal success", async () => {
+  it("treats HTTP 202 as queued and reduces typed session/new terminal success", async () => {
     const state = fixture();
     const client = createMessageClient(state.composition);
     await client.connect();
@@ -195,7 +195,7 @@ describe("personal-only UnifiedMessageClient", () => {
       operationId: "op-1",
       instanceId: "instance-1",
       target: { scope: "instance" },
-      method: "session.new",
+      method: "session/new",
       params: {},
       idempotencyKey: "op-1",
     });
@@ -223,7 +223,7 @@ describe("personal-only UnifiedMessageClient", () => {
           id: "op-1",
           instanceId: "instance-1",
           target: { scope: "instance" },
-          method: "session.new",
+          method: "session/new",
           capability: "session",
           contractRevision: "2026-07-14.3",
           transport: "service",
@@ -302,7 +302,7 @@ describe("personal-only UnifiedMessageClient", () => {
       operationId: "op-1",
       instanceId: "instance-1",
       target: { scope: "instance" },
-      method: "session.new",
+      method: "session/new",
       params: {},
       idempotencyKey: "op-1",
     });
@@ -334,5 +334,33 @@ describe("personal-only UnifiedMessageClient", () => {
     state.input.onEvent(event);
     expect(observed).toEqual(["same-event"]);
     expect(client.getSnapshot().messages.m1.body).toBe("one");
+  });
+});
+
+describe("createMessageClient overload dispatch", () => {
+  it("builds a private Gateway composition from GatewayMessageClientOptions and dispatches into it", async () => {
+    const client = createMessageClient({
+      gatewayUrl: "https://gateway.example",
+      platform: "web",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      fetch: vi.fn(async () => {
+        throw new Error("no HTTP call is expected before routing dispatch");
+      }),
+    });
+    // Gateway composition's listConversations() rejects with this exact
+    // message; observing it proves the overload routed into the Gateway
+    // composition rather than treating the options object as an opaque
+    // MessageClientComposition.
+    await expect(client.conversations.list())
+      .rejects.toThrow("explicit agentId");
+  });
+
+  it("still dispatches a plain MessageClientComposition unchanged, even one carrying extra node-only fields", async () => {
+    const state = fixture();
+    const composition = { ...state.composition, nodeTransport: {} } as unknown as MessageClientComposition;
+    const client = createMessageClient(composition);
+    expect(client.getSnapshot().connection).toBe("disconnected");
+    await client.connect();
+    expect(state.connectCalls).toBe(1);
   });
 });

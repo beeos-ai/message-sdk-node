@@ -37,4 +37,10 @@ describe("package entrypoint surface", () => {
     expect(reactNative.createMessageClient).toBe(root.createMessageClient);
     expect(node.createMessageClient).toBe(root.createMessageClient);
   });
+
+  it("never leaks the private Gateway composition factory from any entrypoint", () => {
+    for (const mod of [root, web, node, reactNative]) {
+      expect(mod).not.toHaveProperty("createGatewayMessageClientComposition");
+    }
+  });
 });

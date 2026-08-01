@@ -22,6 +22,7 @@ export const REALTIME_EVENT_TYPES = [
   "agent.updated",
   "inbox.conversation.available",
   "inbox.conversation.unavailable",
+  "personal.notification",
   "operation.available",
   "operation.started",
   "operation.progress",
@@ -146,7 +147,7 @@ export interface SessionNewResult {
 }
 
 export interface SessionNewRealtimeOperation extends RealtimeOperation {
-  method: "session.new";
+  method: "session/new";
   result?: SessionNewResult;
 }
 
@@ -167,6 +168,13 @@ export interface RealtimeEventDataMap {
   "agent.updated": { agentId: string; status: string; revision: string; [key: string]: unknown };
   "inbox.conversation.available": { conversationId: string; [key: string]: unknown };
   "inbox.conversation.unavailable": { conversationId: string; [key: string]: unknown };
+  /**
+   * Canonical wake signal for a thin/unenveloped Gateway personal-channel
+   * frame (see gateway-runtime.ts normalization). Carries no cursor/sequence;
+   * it only triggers the existing private-directory HTTP recovery, same as
+   * inbox.conversation.available/unavailable.
+   */
+  "personal.notification": { conversationId?: string; [key: string]: unknown };
   "operation.available": { operationId: string; [key: string]: unknown };
   "operation.started": { operation: RealtimeOperation; [key: string]: unknown };
   "operation.progress": { operation: RealtimeOperation; [key: string]: unknown };

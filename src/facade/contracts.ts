@@ -75,7 +75,7 @@ export interface SessionNewResult {
 }
 
 export interface SessionNewOperationProjection extends OperationProjection {
-  readonly method: "session.new";
+  readonly method: "session/new";
   readonly result?: SessionNewResult;
 }
 
