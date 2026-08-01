@@ -1,4 +1,8 @@
 import { OutcomeUnknownError } from "./errors.js";
+import {
+  createGatewayMessageClientComposition,
+  type GatewayMessageClientOptions,
+} from "./gateway-runtime.js";
 import { UnifiedMessageStream } from "./message-stream.js";
 import {
   decodeRealtimeEvent,
@@ -510,6 +514,7 @@ export class UnifiedMessageClient implements MessageClient {
     if (
       event.type === "inbox.conversation.available"
       || event.type === "inbox.conversation.unavailable"
+      || event.type === "personal.notification"
     ) {
       this.requestPrivateDirectoryRefresh();
     }
@@ -618,7 +623,7 @@ export class UnifiedMessageClient implements MessageClient {
     if (
       !isRecord(operation)
       ||
-      operation.method !== "session.new"
+      operation.method !== "session/new"
       || operation.status !== "succeeded"
       || !isRecord(operation.result)
       || typeof operation.result.conversationId !== "string"
@@ -698,8 +703,30 @@ export class UnifiedMessageClient implements MessageClient {
   }
 }
 
-export function createMessageClient(composition: MessageClientComposition): MessageClient {
+/**
+ * One root factory with two call shapes:
+ *  - `createMessageClient(composition)` — an explicit, caller-built
+ *    composition (Node/MS, RN/Gateway compat, or any custom composition).
+ *  - `createMessageClient(options)` — a `GatewayMessageClientOptions` object
+ *    (`gatewayUrl` + `platform` + `currentPrincipal`, ...). The private
+ *    Gateway composition it builds is never exposed to the caller.
+ */
+export function createMessageClient(composition: MessageClientComposition): MessageClient;
+export function createMessageClient(options: GatewayMessageClientOptions): MessageClient;
+export function createMessageClient(
+  input: MessageClientComposition | GatewayMessageClientOptions,
+): MessageClient {
+  const composition = isGatewayMessageClientOptions(input)
+    ? createGatewayMessageClientComposition(input)
+    : input;
   return new UnifiedMessageClient(composition);
+}
+
+function isGatewayMessageClientOptions(
+  input: MessageClientComposition | GatewayMessageClientOptions,
+): input is GatewayMessageClientOptions {
+  const candidate = input as Partial<GatewayMessageClientOptions>;
+  return typeof candidate.gatewayUrl === "string" && typeof candidate.platform === "string";
 }
 
 function matches(event: AnyRealtimeEventV1, filter: RealtimeListenFilter): boolean {

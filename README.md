@@ -72,10 +72,51 @@ durable private-inbox recovery from the authoritative open and closed conversati
 directories. It does not fall back to Gateway or ACP. Unsupported MS commands
 fail explicitly.
 
-## React Native Gateway composition
+## Web/desktop/mobile Gateway composition
 
-Mobile composition roots use Gateway v1 without constructing EventSource or a
-second Centrifugo client:
+Web, desktop and mobile composition roots pass a `GatewayMessageClientOptions`
+object straight to the one root factory; the private Gateway v1 composition it
+builds is never returned or exported:
+
+```typescript
+import { createMessageClient } from "@beeos-ai/message-sdk";
+import type { GatewayMessageClientOptions } from "@beeos-ai/message-sdk/web";
+
+const client = createMessageClient({
+  gatewayUrl,
+  platform: "web",
+  currentPrincipal,
+  // Optional on "web"/"desktop": the same-origin session cookie
+  // (`credentials: "include"`) is always sent; a Bearer token is added only
+  // when accessTokenProvider is supplied and resolves a non-empty string.
+  accessTokenProvider,
+  lifecycle,
+} satisfies GatewayMessageClientOptions);
+```
+
+The messaging-token response pins `currentPrincipal`, and the builder owns the
+single physical server-bound personal WSS. There are no dynamic conversation
+subscriptions and no realtime cursor/checkpoint store. A thin, envelope-less
+personal-channel frame is normalized into the canonical `personal.notification`
+wake signal before it reaches `listen()`; a fully-typed `RealtimeEventV1` frame
+passes through unchanged.
+
+One login-scoped client is shared by all agents and conversations. This
+composition passes the explicit agent target through `listForAgent`, `create`,
+`watch`, and `messages.send`; its conversation-route registry rejects missing
+or conflicting mappings and never infers them from events or authors.
+`conversations.update` is rename-only and requires the caller's
+`idempotencyKey`. Model changes use typed
+`methods.execute({ operationId, target, method: "session/set_model", ... })`;
+they are never converted into a generic conversation update.
+
+## React Native Gateway composition (deprecated)
+
+`createReactNativeMessageClientComposition` from
+`@beeos-ai/message-sdk/react-native` is still supported for existing
+composition roots, but is deprecated in favor of the unified factory above
+with `platform: "mobile"` — it now delegates to that same shared
+implementation:
 
 ```typescript
 import { createMessageClient } from "@beeos-ai/message-sdk";
@@ -90,18 +131,6 @@ const client = createMessageClient(createReactNativeMessageClientComposition({
   lifecycle,
 }));
 ```
-
-The messaging-token response pins `currentPrincipal`, and the builder owns the
-single physical server-bound personal WSS. There are no dynamic conversation
-subscriptions and no realtime cursor/checkpoint store.
-One login-scoped client is shared by all agents and conversations. Mobile
-passes the explicit agent target through `listForAgent`, `create`, `watch`, and
-`messages.send`; the composition's conversation-route registry rejects
-missing or conflicting mappings and never infers them from events or authors.
-`conversations.update` is rename-only and requires the caller's
-`idempotencyKey`. Model changes use typed
-`methods.execute({ operationId, target, method: "session/set_model", ... })`;
-they are never converted into a generic conversation update.
 
 ## Streaming replies
 

@@ -112,13 +112,13 @@ describe("entity revision projection", () => {
     expect(projection.apply(messageEvent("message.updated", "3", "late", "1"))).toBe("stale");
   });
 
-  it("reduces typed session.new terminal results by operation revision", () => {
+  it("reduces typed session/new terminal results by operation revision", () => {
     const projection = new ProjectionEngine();
     const operation = {
       id: "op-1",
       instanceId: "instance-1",
       target: { scope: "instance" as const },
-      method: "session.new",
+      method: "session/new",
       capability: "session",
       contractRevision: "2026-07-14.3" as const,
       transport: "service" as const,
