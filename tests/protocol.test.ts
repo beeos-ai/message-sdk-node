@@ -51,7 +51,7 @@ describe("personal realtime envelope", () => {
         operation: {
           id: "operation-1",
           instanceId: "instance-1",
-          method: "session.new",
+          method: "session/new",
           result: { sessionId: "session-1", conversationId: "conversation-1" },
         },
         additive: "preserved",

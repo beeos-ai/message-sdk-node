@@ -33,6 +33,14 @@ crashes. Unknown event types and additive fields are preserved. Known reducers
 handle known data and ignore malformed known payloads without making the SDK a
 second business-validation authority.
 
+`personal.notification` is an additive event type: the Gateway composition
+(web/desktop/mobile) normalizes any thin, envelope-less personal-channel frame
+into this canonical shape at the transport boundary, before it reaches
+`listen()`. It carries no cursor/sequence; receiving one only triggers the same
+existing private-directory HTTP recovery as
+`inbox.conversation.available`/`unavailable`. A frame that already arrives as a
+well-formed `RealtimeEventV1` (e.g. `message.created`) is never rewrapped.
+
 Message, conversation, and operation revisions live on those entities.
 `historyGeneration` remains a conversation/message business fence for clear
 history. It is not a realtime cursor.
@@ -52,7 +60,7 @@ query loop. There is no SDK realtime `ProjectionStore` or cursor checkpoint.
 HTTP 202 from `methods.execute` creates a non-terminal queued operation
 projection; it is never treated as success. `operation.started`,
 `operation.progress`, and `operation.terminal` update the stable operation
-snapshot by revision. A successful `session.new` terminal result is typed as
+snapshot by revision. A successful `session/new` terminal result is typed as
 `{ sessionId, conversationId }`.
 
 No command is automatically retried after an ambiguous outcome. The caller's
