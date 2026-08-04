@@ -210,10 +210,11 @@ export class UnifiedMessageClient implements MessageClient {
     const inflight = this.connectPromise;
     try {
       if (inflight) await inflight.catch(() => undefined);
-      await Promise.allSettled(
-        [...this.runtimeConsumers].map((consumer) => consumer.stop()),
-      );
-      this.runtimeConsumers.clear();
+      // Keep durable runtime delivery consumers alive across WSS reconnect.
+      // `methods.consume` wrappers are one-shot (`stop` sets stopped=true), and
+      // claw lease handoff calls disconnect before connect — stopping consumers
+      // here permanently killed models/list claim until COMMAND_EXPIRED.
+      // Owners still call consumer.stop() on generation/process teardown.
       await this.retireSession();
     } finally {
       this.abortRecoveryBuffer();
