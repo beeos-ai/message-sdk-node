@@ -56,7 +56,7 @@ class NodeRuntimeDeliveryConsumer implements RuntimeDeliveryConsumer {
     lease: RuntimeDeliveryAuthorityLease;
     controller: AbortController;
     completion: Promise<void>;
-    expiryTimer: ReturnType<typeof setTimeout>;
+    expiryTimer?: ReturnType<typeof setTimeout>;
   }>();
   private consecutiveRenewFailures = 0;
   private leaseStarvedSince?: number;
@@ -161,19 +161,16 @@ class NodeRuntimeDeliveryConsumer implements RuntimeDeliveryConsumer {
             lease,
             controller: workerController,
             completion: Promise.resolve(),
-            expiryTimer: setTimeout(
-              () => workerController.abort(),
-              Math.max(0, leaseExpiryMs(lease) - Date.now()),
-            ),
+            expiryTimer: undefined,
           };
-          entry.expiryTimer.unref?.();
+          this.armWorkerExpiry(entry);
           entry.completion = this.options.onDelivery(delivery, {
             lease: sanitizedLease(lease),
             signal: workerController.signal,
           }).catch((error) => {
             if (!workerController.signal.aborted) this.report(error);
           }).finally(() => {
-            clearTimeout(entry.expiryTimer);
+            if (entry.expiryTimer) clearTimeout(entry.expiryTimer);
             signal.removeEventListener("abort", abort);
             this.workers.delete(delivery.deliveryId);
           });
@@ -223,8 +220,12 @@ class NodeRuntimeDeliveryConsumer implements RuntimeDeliveryConsumer {
     }
     const ids: string[] = [];
     for (const [deliveryId, worker] of this.workers) {
-      if (!sameLease(current, worker.lease)) worker.controller.abort();
-      else ids.push(deliveryId);
+      if (!sameLeaseFence(current, worker.lease)) {
+        worker.controller.abort();
+      } else {
+        this.refreshWorkerLease(worker, current);
+        ids.push(deliveryId);
+      }
     }
     if (!ids.length) return;
     try {
@@ -255,6 +256,38 @@ class NodeRuntimeDeliveryConsumer implements RuntimeDeliveryConsumer {
         for (const worker of this.workers.values()) worker.controller.abort();
       }
     }
+  }
+
+  private refreshWorkerLease(
+    worker: {
+      lease: RuntimeDeliveryAuthorityLease;
+      controller: AbortController;
+      expiryTimer?: ReturnType<typeof setTimeout>;
+    },
+    lease: RuntimeDeliveryAuthorityLease,
+  ): void {
+    worker.lease = lease;
+    this.armWorkerExpiry(worker);
+  }
+
+  private armWorkerExpiry(worker: {
+    lease: RuntimeDeliveryAuthorityLease;
+    controller: AbortController;
+    expiryTimer?: ReturnType<typeof setTimeout>;
+  }): void {
+    if (worker.expiryTimer) clearTimeout(worker.expiryTimer);
+    worker.expiryTimer = setTimeout(() => {
+      const current = this.authority.currentLease();
+      if (!current || leaseExpired(current) || !sameLeaseFence(current, worker.lease)) {
+        worker.controller.abort();
+        return;
+      }
+      // Heartbeat renewal rotates the credential and expiry while retaining
+      // the lease fence. Re-arm from the live authority instead of aborting at
+      // the read-time snapshot's stale expiry.
+      this.refreshWorkerLease(worker, current);
+    }, Math.max(0, leaseExpiryMs(worker.lease) - Date.now()));
+    worker.expiryTimer.unref?.();
   }
 
   private async acknowledgeWithLease(
@@ -479,6 +512,18 @@ function sameLease(
     left.journalStoreId === right.journalStoreId &&
     left.journalGeneration === right.journalGeneration &&
     left.runtimeLeaseCredential === right.runtimeLeaseCredential;
+}
+
+function sameLeaseFence(
+  left: RuntimeDeliveryAuthorityLease,
+  right: RuntimeDeliveryAuthorityLease,
+): boolean {
+  return left.instanceId === right.instanceId &&
+    left.handlerIdentity === right.handlerIdentity &&
+    left.runtimeEpoch === right.runtimeEpoch &&
+    left.leaseId === right.leaseId &&
+    left.journalStoreId === right.journalStoreId &&
+    left.journalGeneration === right.journalGeneration;
 }
 
 function sanitizedLease(lease: RuntimeDeliveryAuthorityLease): RuntimeDeliveryLease {

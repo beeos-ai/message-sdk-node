@@ -240,6 +240,71 @@ describe("Node durable runtime delivery", () => {
     await consumer.stop();
   });
 
+  it("keeps an active handler alive across heartbeat lease renewal", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-06T00:00:00.000Z"));
+    const initial = lease({
+      leaseExpiresAt: new Date(Date.now() + 100).toISOString(),
+      runtimeLeaseCredential: "initial-credential",
+    });
+    const active = authority(initial);
+    let readCount = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/deliveries/read")) {
+        readCount += 1;
+        if (readCount > 1) return waitForAbort(init?.signal ?? undefined);
+        return json({
+          status: "deliveries",
+          deliveries: [{
+            deliveryId: "delivery-1",
+            redelivered: false,
+            idleMs: 0,
+            message: { type: "runtime_rpc_request" },
+          }],
+        });
+      }
+      throw new Error(`unexpected ${url.pathname}`);
+    }));
+
+    let handlerStarted!: () => void;
+    const started = new Promise<void>((resolve) => { handlerStarted = resolve; });
+    let abortCount = 0;
+    const consumer = new NodeRuntimeDeliveryPort(
+      { serviceOrigin: async () => origin },
+      active.port,
+      "scoped-key",
+    ).consume({
+      async onDelivery(_delivery, context) {
+        handlerStarted();
+        await new Promise<void>((resolve) => {
+          context.signal.addEventListener("abort", () => {
+            abortCount += 1;
+            resolve();
+          }, { once: true });
+        });
+      },
+      renewIntervalMs: 60_000,
+      blockMs: 1,
+    });
+    consumer.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await started;
+
+    await vi.advanceTimersByTimeAsync(50);
+    active.set({
+      ...initial,
+      leaseExpiresAt: new Date(Date.now() + 500).toISOString(),
+      runtimeLeaseCredential: "renewed-credential",
+    });
+    await vi.advanceTimersByTimeAsync(51);
+    expect(abortCount).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(499);
+    expect(abortCount).toBe(1);
+    await consumer.stop();
+  });
+
   describe("lease starvation reporting", () => {
     const cases = [
       {
