@@ -291,11 +291,16 @@ class GatewayHttpAdapter {
     this.bindConversation(command.conversationId, command.agentId);
     const agentId = this.agentFor(command.conversationId);
     const text = messageText(command.content);
+    const mentions = messageMentions(command.content);
     try {
       const response = await this.call(
         "POST",
         `/api/v1/agents/${segment(agentId)}/conversations/${segment(command.conversationId)}/messages`,
-        { message: text, idempotency_key: command.idempotencyKey },
+        {
+          message: text,
+          ...(mentions ? { mentions } : {}),
+          idempotency_key: command.idempotencyKey,
+        },
         { "Idempotency-Key": command.idempotencyKey },
       );
       const raw = record(unwrap(response));
@@ -828,6 +833,23 @@ function messageText(content: JsonValue): string {
     && typeof content.text === "string"
   ) return content.text;
   throw new Error("Gateway chat_message content requires a text field");
+}
+
+function messageMentions(content: JsonValue): Array<{ agentId: string; name: string }> | undefined {
+  if (
+    typeof content !== "object" || content === null || Array.isArray(content)
+    || !Array.isArray(content.mentions)
+  ) return undefined;
+
+  const mentions = content.mentions.flatMap((value) => {
+    if (
+      typeof value !== "object" || value === null || Array.isArray(value)
+      || typeof value.agentId !== "string"
+      || typeof value.name !== "string"
+    ) return [];
+    return [{ agentId: value.agentId, name: value.name }];
+  });
+  return mentions.length > 0 ? mentions : undefined;
 }
 
 function messageState(value: unknown): MessageProjection["state"] {
