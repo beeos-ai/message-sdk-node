@@ -296,6 +296,51 @@ describe("React Native Gateway composition", () => {
       .toBe(true);
   });
 
+  it("forwards structured mentions through the shared Gateway message request", async () => {
+    const calls: Array<{ url: string; body?: unknown }> = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return json({
+        success: true,
+        data: { messageId: "message-key" },
+      }, 202);
+    });
+    const composition = createReactNativeMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      accessTokenProvider: async () => "access-token",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      fetch: fetchMock,
+    });
+    composition.conversationRoutes!.bindConversation("c1", "agent-a");
+
+    await composition.messageCommand.sendMessage({
+      conversationId: "c1",
+      agentId: "agent-a",
+      clientMessageId: "message-key",
+      idempotencyKey: "message-key",
+      type: "chat_message",
+      content: {
+        text: "delegate this",
+        mentions: [
+          { agentId: "agent-target", name: "Target", ignored: "not-forwarded" },
+          "invalid",
+        ],
+      },
+    });
+
+    expect(calls).toEqual([{
+      url: "https://gateway.example/api/v1/agents/agent-a/conversations/c1/messages",
+      body: {
+        message: "delegate this",
+        mentions: [{ agentId: "agent-target", name: "Target" }],
+        idempotency_key: "message-key",
+      },
+    }]);
+  });
+
   it("surfaces an invalid authoritative runtime_dispatch receipt as a protocol error", async () => {
     const composition = createReactNativeMessageClientComposition({
       gatewayUrl: "https://gateway.example",
