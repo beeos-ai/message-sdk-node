@@ -242,6 +242,8 @@ class SharedCredentials {
 
 class NodeMessageHttpAdapter {
   private readonly generations = new Map<string, string>();
+  /** Root user-turn request id for each open agent stream. */
+  private readonly streamRequestIds = new Map<string, string>();
 
   constructor(
     private readonly credentials: SharedCredentials,
@@ -401,6 +403,7 @@ class NodeMessageHttpAdapter {
   }
 
   async startStream(command: SendMessageCommand): Promise<SendMessageReceipt> {
+    const requestId = command.replyTo ?? command.clientMessageId;
     try {
       const response = await this.requestResponse(
         "POST",
@@ -413,18 +416,22 @@ class NodeMessageHttpAdapter {
           state: "streaming",
         },
         command.idempotencyKey,
+        undefined,
+        requestId,
       );
       const raw = record(await response.json());
+      const messageId = requiredString(raw.id);
       const outcome = raw.idempotent ? "duplicate" : response.status === 201 ? "created" : "accepted";
+      this.streamRequestIds.set(messageId, requestId);
       this.logger?.info?.(formatOpenClawDeliveryBoundary({
         stage: "sdk_stream_open",
         status: "accepted",
         code: String(outcome),
         conversationId: command.conversationId,
-        messageId: requiredString(raw.id),
+        messageId,
       }));
       return {
-        messageId: requiredString(raw.id),
+        messageId,
         outcome,
         idempotent: Boolean(raw.idempotent),
         correlationId: response.headers.get("x-request-id") ?? undefined,
@@ -508,16 +515,22 @@ class NodeMessageHttpAdapter {
     stage: "sdk_delta_append" | "sdk_terminal_finalize",
     reason?: string,
   ): Promise<void> {
+    const requestId = this.streamRequestIds.get(messageId) ?? messageId;
     return this.request(
       "PATCH",
       `/api/v3/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
       body,
       key,
+      undefined,
+      requestId,
     ).then(
       () => {
         this.logger?.info?.(formatOpenClawDeliveryBoundary({
           stage, status: "accepted", reason, conversationId, messageId,
         }));
+        if (stage === "sdk_terminal_finalize") {
+          this.streamRequestIds.delete(messageId);
+        }
       },
       (error: unknown) => {
         this.logger?.warn?.(formatOpenClawDeliveryBoundary({
@@ -536,8 +549,9 @@ class NodeMessageHttpAdapter {
     body?: unknown,
     key?: string,
     auth?: { token: string; serviceUrl: string },
+    requestId?: string,
   ): Promise<unknown> {
-    const response = await this.requestResponse(method, path, body, key, auth);
+    const response = await this.requestResponse(method, path, body, key, auth, requestId);
     if (response.status === 204) return undefined;
     return response.json();
   }
@@ -548,9 +562,10 @@ class NodeMessageHttpAdapter {
     body?: unknown,
     key?: string,
     suppliedAuth?: { token: string; serviceUrl: string },
+    requestId?: string,
   ): Promise<Response> {
     const auth = suppliedAuth ?? await this.credentials.http();
-    return await this.requestWithAuth(method, path, body, key, auth, true);
+    return await this.requestWithAuth(method, path, body, key, auth, true, requestId);
   }
 
   private async requestWithAuth(
@@ -560,12 +575,14 @@ class NodeMessageHttpAdapter {
     key: string | undefined,
     auth: { token: string; serviceUrl: string },
     allowRefresh: boolean,
+    requestId?: string,
   ): Promise<Response> {
     const headers: Record<string, string> = {
       Accept: "application/json",
       Authorization: `Bearer ${auth.token}`,
     };
     if (key) headers["Idempotency-Key"] = key;
+    if (requestId) headers["X-Request-Id"] = requestId;
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const response = await fetch(`${auth.serviceUrl}${path}`, {
       method,
@@ -579,7 +596,7 @@ class NodeMessageHttpAdapter {
     if (response.status === 401 && allowRefresh) {
       this.credentials.invalidate(auth.token);
       const refreshed = await this.credentials.http();
-      return await this.requestWithAuth(method, path, body, key, refreshed, false);
+      return await this.requestWithAuth(method, path, body, key, refreshed, false, requestId);
     }
     if (!response.ok) throw new NodeHttpError(response.status);
     return response;

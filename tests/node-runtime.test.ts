@@ -192,13 +192,14 @@ describe("Node Message Service composition route matrix", () => {
   });
 
   it("routes v3 stream writes with conversation, UTF-8 body offset and stable keys", async () => {
-    const calls: Array<{ url: string; method: string; body?: unknown; key?: string }> = [];
+    const calls: Array<{ url: string; method: string; body?: unknown; key?: string; requestId?: string }> = [];
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       calls.push({
         url: String(input),
         method: init?.method ?? "GET",
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
         key: new Headers(init?.headers).get("Idempotency-Key") ?? undefined,
+        requestId: new Headers(init?.headers).get("X-Request-Id") ?? undefined,
       });
       return json({
         id: "open-key",
@@ -216,6 +217,7 @@ describe("Node Message Service composition route matrix", () => {
       idempotencyKey: "open-key",
       type: "agent_reply",
       content: {},
+      replyTo: "root-request-id",
     });
     await composition.messageStream.append("c1", receipt.messageId, "🐝", 4, "append-key");
     await composition.messageStream.finalize(
@@ -235,21 +237,25 @@ describe("Node Message Service composition route matrix", () => {
           id: "open-key",
           type: "agent_reply",
           content: {},
+          reply_to: "root-request-id",
           state: "streaming",
         },
         key: "open-key",
+        requestId: "root-request-id",
       },
       {
         url: `${base}/api/v3/conversations/c1/messages/open-key`,
         method: "PATCH",
         body: { body_append: "🐝", body_from: 4 },
         key: "append-key",
+        requestId: "root-request-id",
       },
       {
         url: `${base}/api/v3/conversations/c1/messages/open-key`,
         method: "PATCH",
         body: { state: "completed", stop_reason: "end_turn" },
         key: "terminal-key",
+        requestId: "root-request-id",
       },
     ]);
   });

@@ -56,6 +56,32 @@ beforeEach(() => {
 });
 
 describe("Gateway composition — web/desktop credentials", () => {
+  it("uses the caller-owned chat UUID as the X-Request-Id header", async () => {
+    const headers: Headers[] = [];
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      headers.push(new Headers(init?.headers));
+      return json({ success: true, data: { message_id: "request-1" } }, 202);
+    });
+    const composition = createGatewayMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      platform: "web",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      fetch: fetchMock,
+    });
+
+    await composition.messageCommand.sendMessage({
+      conversationId: "c1",
+      agentId: "agent-a",
+      clientMessageId: "request-1",
+      idempotencyKey: "request-1",
+      type: "chat_message",
+      content: { text: "hello" },
+    });
+
+    expect(headers[0].get("X-Request-Id")).toBe("request-1");
+    expect(headers[0].get("Idempotency-Key")).toBe("request-1");
+  });
+
   it("always sends credentials: include and omits Authorization when no token provider is configured", async () => {
     const calls: Array<{ init?: RequestInit }> = [];
     const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {

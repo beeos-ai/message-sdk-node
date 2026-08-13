@@ -301,7 +301,14 @@ class GatewayHttpAdapter {
           ...(mentions ? { mentions } : {}),
           idempotency_key: command.idempotencyKey,
         },
-        { "Idempotency-Key": command.idempotencyKey },
+        {
+          "Idempotency-Key": command.idempotencyKey,
+          // One user turn keeps the caller-owned UUID across Web, Gateway,
+          // Message Service and the runtime. HTTP field names are
+          // case-insensitive, but emit the conventional spelling so captured
+          // requests and operator logs are consistent.
+          "X-Request-Id": command.clientMessageId,
+        },
       );
       const raw = record(unwrap(response));
       return {
