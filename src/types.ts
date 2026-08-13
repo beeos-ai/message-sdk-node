@@ -189,7 +189,14 @@ export type Part =
       name?: string;
       size?: number;
     }
-  | { type: "source"; url: string; title?: string; snippet?: string }
+  | {
+      type: "source";
+      url: string;
+      title?: string;
+      snippet?: string;
+      /** Correlates this citation with the search `tool_use` that produced it. */
+      tool_use_id?: string;
+    }
   | { type: "custom"; kind: string; data: unknown };
 
 /**
