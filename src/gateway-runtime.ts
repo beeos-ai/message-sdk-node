@@ -27,6 +27,7 @@ import {
 } from "./protocol/index.js";
 
 const CONTRACT_REVISION = "2026-07-14.3" as const;
+type AccessTokenRefreshOutcome = "ok" | "transient" | "invalid";
 
 /**
  * Composition-root-only options for the private Gateway (v1) composition
@@ -49,6 +50,15 @@ export interface GatewayMessageClientOptions {
    * "mobile", which has no cookie jar.
    */
   readonly accessTokenProvider?: () => Promise<string>;
+  /**
+   * Host-owned recovery for a Bearer token rejected with HTTP 401. The SDK
+   * never reads refresh credentials or calls a refresh endpoint itself. When
+   * the host reports `ok`, the SDK obtains the current access token again and
+   * replays the exact Gateway request once.
+   */
+  readonly refreshAccessTokenOnUnauthorized?: (
+    staleAccessToken: string,
+  ) => Promise<AccessTokenRefreshOutcome>;
   readonly lifecycle?: LifecyclePort;
   readonly fetch?: typeof globalThis.fetch;
 }
@@ -572,6 +582,7 @@ async function requestResponse(
   path: string,
   body?: unknown,
   extraHeaders: Readonly<Record<string, string>> = {},
+  allowAuthRetry = true,
 ): Promise<Response> {
   const token = await credentials.accessToken();
   const headers: Record<string, string> = {
@@ -589,12 +600,48 @@ async function requestResponse(
     ...(options.platform === "mobile" ? {} : { credentials: "include" }),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+  if (
+    response.status === 401
+    && token
+    && options.refreshAccessTokenOnUnauthorized
+    && allowAuthRetry
+  ) {
+    let outcome: AccessTokenRefreshOutcome;
+    try {
+      outcome = await options.refreshAccessTokenOnUnauthorized(token);
+    } catch {
+      throw new GatewayHttpError(401, "access_token_refresh_transient");
+    }
+    if (outcome === "ok") {
+      return requestResponse(
+        options,
+        credentials,
+        method,
+        path,
+        body,
+        extraHeaders,
+        false,
+      );
+    }
+    throw new GatewayHttpError(
+      401,
+      outcome === "invalid"
+        ? "access_token_invalid"
+        : "access_token_refresh_transient",
+    );
+  }
+  if (response.status === 401 && !allowAuthRetry) {
+    throw new GatewayHttpError(401, "access_token_retry_rejected");
+  }
   if (!response.ok) throw new GatewayHttpError(response.status);
   return response;
 }
 
 class GatewayHttpError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    readonly code?: string,
+  ) {
     super(`Gateway request failed with HTTP ${status}`);
   }
 }

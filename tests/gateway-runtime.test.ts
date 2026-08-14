@@ -211,6 +211,101 @@ describe("Gateway composition — mobile compatibility", () => {
     await expect(composition.conversationQuery.getConversation("c1"))
       .rejects.toThrow("required for platform \"mobile\"");
   });
+
+  it("lets the host refresh a rejected access token and replays the request once", async () => {
+    let currentToken = "access-old";
+    const authorization: string[] = [];
+    const refresh = vi.fn(async (staleAccessToken: string) => {
+      expect(staleAccessToken).toBe("access-old");
+      currentToken = "access-new";
+      return "ok" as const;
+    });
+    const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const value = new Headers(init?.headers).get("Authorization") ?? "";
+      authorization.push(value);
+      return value === "Bearer access-old"
+        ? json({ error: "unauthorized" }, 401)
+        : json({ success: true, data: conversation() });
+    });
+    const composition = createGatewayMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      platform: "mobile",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      accessTokenProvider: async () => currentToken,
+      refreshAccessTokenOnUnauthorized: refresh,
+      fetch: fetchMock,
+    });
+    composition.conversationRoutes!.bindConversation("c1", "agent-a");
+
+    await expect(composition.conversationQuery.getConversation("c1"))
+      .resolves.toMatchObject({ id: "c1" });
+
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(authorization).toEqual([
+      "Bearer access-old",
+      "Bearer access-new",
+    ]);
+  });
+
+  it.each([
+    ["transient", "access_token_refresh_transient"],
+    ["invalid", "access_token_invalid"],
+  ] as const)("does not replay when host recovery reports %s", async (outcome, code) => {
+    const refresh = vi.fn(async () => outcome);
+    const fetchMock = vi.fn(async () => json({ error: "unauthorized" }, 401));
+    const composition = createGatewayMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      platform: "mobile",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      accessTokenProvider: async () => "access-old",
+      refreshAccessTokenOnUnauthorized: refresh,
+      fetch: fetchMock,
+    });
+    composition.conversationRoutes!.bindConversation("c1", "agent-a");
+
+    await expect(composition.conversationQuery.getConversation("c1"))
+      .rejects.toMatchObject({ status: 401, code });
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("never loops when the replay is also rejected", async () => {
+    const refresh = vi.fn(async () => "ok" as const);
+    const fetchMock = vi.fn(async () => json({ error: "unauthorized" }, 401));
+    const composition = createGatewayMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      platform: "mobile",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      accessTokenProvider: async () => "access-token",
+      refreshAccessTokenOnUnauthorized: refresh,
+      fetch: fetchMock,
+    });
+    composition.conversationRoutes!.bindConversation("c1", "agent-a");
+
+    await expect(composition.conversationQuery.getConversation("c1"))
+      .rejects.toMatchObject({ status: 401, code: "access_token_retry_rejected" });
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not invoke access-token recovery for HTTP 403", async () => {
+    const refresh = vi.fn(async () => "ok" as const);
+    const fetchMock = vi.fn(async () => json({ error: "forbidden" }, 403));
+    const composition = createGatewayMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      platform: "mobile",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      accessTokenProvider: async () => "access-token",
+      refreshAccessTokenOnUnauthorized: refresh,
+      fetch: fetchMock,
+    });
+    composition.conversationRoutes!.bindConversation("c1", "agent-a");
+
+    await expect(composition.conversationQuery.getConversation("c1"))
+      .rejects.toMatchObject({ status: 403 });
+    expect(refresh).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });
 
 describe("Gateway composition — personal.notification normalization", () => {

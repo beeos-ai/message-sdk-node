@@ -16,6 +16,9 @@ import type {
 export interface ReactNativeMessageClientOptions {
   readonly gatewayUrl: string;
   readonly accessTokenProvider: () => Promise<string>;
+  readonly refreshAccessTokenOnUnauthorized?: (
+    staleAccessToken: string,
+  ) => Promise<"ok" | "transient" | "invalid">;
   /**
    * Login-owned identity is verified against the token endpoint's canonical
    * principal_id before it can author optimistic rows.
