@@ -307,7 +307,7 @@ class GatewayHttpAdapter {
           // Message Service and the runtime. HTTP field names are
           // case-insensitive, but emit the conventional spelling so captured
           // requests and operator logs are consistent.
-          "X-Request-Id": command.clientMessageId,
+          "X-Request-ID": command.requestId ?? command.clientMessageId,
         },
       );
       const raw = record(unwrap(response));

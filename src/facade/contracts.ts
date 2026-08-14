@@ -138,6 +138,8 @@ export interface SendMessageCommand {
   readonly agentId?: string;
   readonly clientMessageId: string;
   readonly idempotencyKey: string;
+  /** Transport-only root correlation ID emitted as the X-Request-ID header. */
+  readonly requestId?: string;
   readonly type: string;
   readonly content: JsonValue;
   readonly replyTo?: string;
