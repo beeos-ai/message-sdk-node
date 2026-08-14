@@ -90,9 +90,19 @@ const client = createMessageClient({
   // (`credentials: "include"`) is always sent; a Bearer token is added only
   // when accessTokenProvider is supplied and resolves a non-empty string.
   accessTokenProvider,
+  // Optional host-owned recovery for Bearer-token 401 responses. The SDK
+  // calls this hook and replays the rejected request once only when it
+  // resolves to "ok"; it never reads refresh credentials itself.
+  refreshAccessTokenOnUnauthorized,
   lifecycle,
 } satisfies GatewayMessageClientOptions);
 ```
+
+`refreshAccessTokenOnUnauthorized(staleAccessToken)` returns `"ok"`,
+`"transient"`, or `"invalid"`. The host remains responsible for refresh-token
+storage, refresh-request coalescing, credential rotation and session
+invalidation. HTTP 403 never invokes the hook, and a replayed request is never
+replayed again.
 
 The messaging-token response pins `currentPrincipal`, and the builder owns the
 single physical server-bound personal WSS. There are no dynamic conversation
@@ -127,6 +137,7 @@ import {
 const client = createMessageClient(createReactNativeMessageClientComposition({
   gatewayUrl,
   accessTokenProvider,
+  refreshAccessTokenOnUnauthorized,
   currentPrincipal,
   lifecycle,
 }));
