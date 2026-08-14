@@ -56,7 +56,7 @@ beforeEach(() => {
 });
 
 describe("Gateway composition — web/desktop credentials", () => {
-  it("uses the caller-owned chat UUID as the X-Request-Id header", async () => {
+  it("uses the explicit root X-Request-ID without changing message identity", async () => {
     const headers: Headers[] = [];
     const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       headers.push(new Headers(init?.headers));
@@ -74,11 +74,12 @@ describe("Gateway composition — web/desktop credentials", () => {
       agentId: "agent-a",
       clientMessageId: "request-1",
       idempotencyKey: "request-1",
+      requestId: "root-request-1",
       type: "chat_message",
       content: { text: "hello" },
     });
 
-    expect(headers[0].get("X-Request-Id")).toBe("request-1");
+    expect(headers[0].get("X-Request-ID")).toBe("root-request-1");
     expect(headers[0].get("Idempotency-Key")).toBe("request-1");
   });
 

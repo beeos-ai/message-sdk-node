@@ -199,7 +199,7 @@ describe("Node Message Service composition route matrix", () => {
         method: init?.method ?? "GET",
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
         key: new Headers(init?.headers).get("Idempotency-Key") ?? undefined,
-        requestId: new Headers(init?.headers).get("X-Request-Id") ?? undefined,
+        requestId: new Headers(init?.headers).get("X-Request-ID") ?? undefined,
       });
       return json({
         id: "open-key",
@@ -218,6 +218,7 @@ describe("Node Message Service composition route matrix", () => {
       type: "agent_reply",
       content: {},
       replyTo: "root-request-id",
+      requestId: "web-root-request-id",
     });
     await composition.messageStream.append("c1", receipt.messageId, "🐝", 4, "append-key");
     await composition.messageStream.finalize(
@@ -241,21 +242,21 @@ describe("Node Message Service composition route matrix", () => {
           state: "streaming",
         },
         key: "open-key",
-        requestId: "root-request-id",
+        requestId: "web-root-request-id",
       },
       {
         url: `${base}/api/v3/conversations/c1/messages/open-key`,
         method: "PATCH",
         body: { body_append: "🐝", body_from: 4 },
         key: "append-key",
-        requestId: "root-request-id",
+        requestId: "web-root-request-id",
       },
       {
         url: `${base}/api/v3/conversations/c1/messages/open-key`,
         method: "PATCH",
         body: { state: "completed", stop_reason: "end_turn" },
         key: "terminal-key",
-        requestId: "root-request-id",
+        requestId: "web-root-request-id",
       },
     ]);
   });

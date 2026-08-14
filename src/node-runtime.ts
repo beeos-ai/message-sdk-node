@@ -403,7 +403,7 @@ class NodeMessageHttpAdapter {
   }
 
   async startStream(command: SendMessageCommand): Promise<SendMessageReceipt> {
-    const requestId = command.replyTo ?? command.clientMessageId;
+    const requestId = command.requestId ?? command.replyTo ?? command.clientMessageId;
     try {
       const response = await this.requestResponse(
         "POST",
@@ -582,7 +582,7 @@ class NodeMessageHttpAdapter {
       Authorization: `Bearer ${auth.token}`,
     };
     if (key) headers["Idempotency-Key"] = key;
-    if (requestId) headers["X-Request-Id"] = requestId;
+    if (requestId) headers["X-Request-ID"] = requestId;
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const response = await fetch(`${auth.serviceUrl}${path}`, {
       method,
