@@ -42,3 +42,13 @@ export type {
   RuntimeDispatchUnconfirmedCode,
 } from "./runtime-dispatch.js";
 export { SingleflightHydrator } from "./hydration.js";
+export {
+  RUNTIME_ERROR_PART_KIND,
+  createRuntimeErrorPart,
+  parseRuntimeErrorPart,
+} from "./runtime-error.js";
+export type {
+  RuntimeErrorCode,
+  RuntimeErrorPart,
+  RuntimeErrorPartData,
+} from "./runtime-error.js";
