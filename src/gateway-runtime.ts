@@ -300,17 +300,11 @@ class GatewayHttpAdapter {
     if (!command.agentId) throw new Error("React Native message send requires explicit agentId");
     this.bindConversation(command.conversationId, command.agentId);
     const agentId = this.agentFor(command.conversationId);
-    const text = messageText(command.content);
-    const mentions = messageMentions(command.content);
     try {
       const response = await this.call(
         "POST",
         `/api/v1/agents/${segment(agentId)}/conversations/${segment(command.conversationId)}/messages`,
-        {
-          message: text,
-          ...(mentions ? { mentions } : {}),
-          idempotency_key: command.idempotencyKey,
-        },
+        gatewaySendBody(command),
         {
           "Idempotency-Key": command.idempotencyKey,
           // One user turn keeps the caller-owned UUID across Web, Gateway,
@@ -879,6 +873,22 @@ function unwrap(value: unknown): unknown {
     return raw.data;
   }
   return value;
+}
+
+function gatewaySendBody(command: SendMessageCommand): Record<string, unknown> {
+  if (command.type === "user.continue") {
+    return {
+      type: "user.continue",
+      content: command.content,
+      idempotency_key: command.idempotencyKey,
+    };
+  }
+  const mentions = messageMentions(command.content);
+  return {
+    message: messageText(command.content),
+    ...(mentions ? { mentions } : {}),
+    idempotency_key: command.idempotencyKey,
+  };
 }
 
 function messageText(content: JsonValue): string {

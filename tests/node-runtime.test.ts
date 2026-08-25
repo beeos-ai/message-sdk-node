@@ -363,6 +363,27 @@ describe("Node Message Service composition route matrix", () => {
     expect(receipt.runtimeDispatch).toEqual(runtimeDispatch);
   });
 
+  it("posts user.continue as type/content without requiring text", async () => {
+    const bodies: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      bodies.push(init?.body ? JSON.parse(String(init.body)) : undefined);
+      return json({ id: "client-owned-uuid", idempotent: false }, 201);
+    }));
+    const content = {
+      schema_version: "openclaw.user_input.v1",
+      request_id: "qreq_1",
+      answers: { environment: { answers: ["Staging"] } },
+    };
+    await createNodeMessageClientComposition(options()).messageCommand.sendMessage({
+      conversationId: "c1",
+      clientMessageId: "client-owned-uuid",
+      idempotencyKey: "client-owned-uuid",
+      type: "user.continue",
+      content,
+    });
+    expect(bodies[0]).toEqual({ type: "user.continue", content });
+  });
+
   it.each([
     { status: "accepted", code: "runtime_rejected" },
     { status: "failed", code: "delivery_unconfirmed" },
