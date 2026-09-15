@@ -51,6 +51,25 @@ function conversation() {
   };
 }
 
+function clearOperation(status: "running" | "succeeded" | "failed") {
+  return {
+    id: "op-clear",
+    instanceId: "instance-1",
+    target: { scope: "conversation", platformAgentId: "agent-a", conversationId: "c1" },
+    method: "session/clear",
+    capability: "conversation",
+    contractRevision: "2026-07-14.3",
+    transport: "service",
+    sequence: "1",
+    status,
+    effectState: status === "succeeded" ? "committed" : status,
+    terminal: status !== "running",
+    createdAt: at,
+    updatedAt: at,
+    revision: "1",
+  };
+}
+
 beforeEach(() => {
   realtimeMock.instances.splice(0);
 });
@@ -305,6 +324,69 @@ describe("Gateway composition — mobile compatibility", () => {
       .rejects.toMatchObject({ status: 403 });
     expect(refresh).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Gateway composition — asynchronous conversation clear", () => {
+  it("waits for the clear operation to succeed before reading the conversation", async () => {
+    let operationReads = 0;
+    const calls: string[] = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      calls.push(`${init?.method ?? "GET"} ${url}`);
+      if (init?.method === "POST" && url.endsWith("/agents/agent-a/conversations/c1/clear")) {
+        return json({ status: "accepted", operationId: "op-clear", conversationId: "c1" }, 202);
+      }
+      if (url.endsWith("/instances/instance-1/operations/op-clear")) {
+        operationReads += 1;
+        return json(clearOperation(operationReads === 1 ? "running" : "succeeded"));
+      }
+      if (url.endsWith("/agents/agent-a/conversations/c1")) {
+        return json({ ...conversation(), historyGeneration: "2", metadataVersion: "2" });
+      }
+      throw new Error(`unexpected Gateway request: ${url}`);
+    });
+    const composition = createGatewayMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      platform: "web",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      fetch: fetchMock,
+    });
+    composition.conversationRoutes!.bindConversation("c1", "agent-a");
+
+    await expect(composition.conversationCommand.clearConversation("c1", "clear-key", "instance-1"))
+      .resolves.toMatchObject({ id: "c1", historyGeneration: "2" });
+
+    expect(operationReads).toBe(2);
+    expect(calls).toEqual([
+      "POST https://gateway.example/api/v1/agents/agent-a/conversations/c1/clear",
+      "GET https://gateway.example/api/v1/instances/instance-1/operations/op-clear",
+      "GET https://gateway.example/api/v1/instances/instance-1/operations/op-clear",
+      "GET https://gateway.example/api/v1/agents/agent-a/conversations/c1",
+    ]);
+  });
+
+  it("rejects when the clear operation reaches a failed terminal state", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST") {
+        return json({ status: "accepted", operationId: "op-clear", conversationId: "c1" }, 202);
+      }
+      if (url.endsWith("/instances/instance-1/operations/op-clear")) {
+        return json({ ...clearOperation("failed"), error: { code: "RUNTIME_EXECUTION_FAILED" } });
+      }
+      throw new Error(`unexpected Gateway request: ${url}`);
+    });
+    const composition = createGatewayMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      platform: "web",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      fetch: fetchMock,
+    });
+    composition.conversationRoutes!.bindConversation("c1", "agent-a");
+
+    await expect(composition.conversationCommand.clearConversation("c1", "clear-key", "instance-1"))
+      .rejects.toThrow("ended with failed");
   });
 });
 

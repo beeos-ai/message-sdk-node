@@ -320,9 +320,10 @@ class NodeMessageHttpAdapter {
     return authoritative;
   }
 
-  async clearConversation(id: string, key: string): Promise<ConversationProjection> {
+  async clearConversation(id: string, key: string, instanceId?: string): Promise<ConversationProjection> {
     void id;
     void key;
+    void instanceId;
     throw new Error("MS v2 does not expose a conversation clear route");
   }
 

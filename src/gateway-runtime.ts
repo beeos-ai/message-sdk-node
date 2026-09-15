@@ -27,6 +27,9 @@ import {
 } from "./protocol/index.js";
 
 const CONTRACT_REVISION = "2026-07-14.3" as const;
+const CLEAR_OPERATION_POLL_INITIAL_DELAY_MS = 250;
+const CLEAR_OPERATION_POLL_MAX_DELAY_MS = 2_000;
+const CLEAR_OPERATION_WAIT_TIMEOUT_MS = 15 * 60 * 1_000;
 type AccessTokenRefreshOutcome = "ok" | "transient" | "invalid";
 
 /**
@@ -237,15 +240,49 @@ class GatewayHttpAdapter {
     return conversation(value, agentId);
   }
 
-  async clearConversation(id: string, key: string): Promise<ConversationProjection> {
+  async clearConversation(id: string, key: string, instanceId?: string): Promise<ConversationProjection> {
     const agentId = this.agentFor(id);
-    await this.call(
+    const response = await this.callResponse(
       "POST",
       `/api/v1/agents/${segment(agentId)}/conversations/${segment(id)}/clear`,
       {},
       { "Idempotency-Key": key, "X-BeeOS-Operation-Id": key },
     );
+    const raw = record(await response.json());
+    if (response.status === 202) {
+      const operationId = optionalString(response.headers.get("X-BeeOS-Operation-Id"))
+        ?? optionalString(raw.operationId ?? raw.operation_id);
+      if (!operationId || raw.status !== "accepted") {
+        throw new Error("Gateway clear accepted response is invalid");
+      }
+      if (!instanceId) {
+        throw new Error("Gateway clear operation requires instanceId for status tracking");
+      }
+      this.instancesByOperation.set(operationId, instanceId);
+      const operation = await this.waitForOperationTerminal(operationId);
+      if (operation.method !== "session/clear") {
+        throw new Error("Gateway clear operation method does not match session/clear");
+      }
+      if (operation.status !== "succeeded") {
+        const detail = operation.error === undefined ? "" : `: ${JSON.stringify(operation.error)}`;
+        throw new Error(`Gateway clear operation ${operationId} ended with ${operation.status}${detail}`);
+      }
+    }
     return this.getConversation(id);
+  }
+
+  private async waitForOperationTerminal(operationId: string): Promise<OperationProjection> {
+    const deadline = Date.now() + CLEAR_OPERATION_WAIT_TIMEOUT_MS;
+    let delayMs = CLEAR_OPERATION_POLL_INITIAL_DELAY_MS;
+    while (true) {
+      const operation = await this.getOperation(operationId);
+      if (operation.terminal) return operation;
+      if (Date.now() >= deadline) {
+        throw new Error(`Gateway clear operation ${operationId} did not reach a terminal state before timeout`);
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+      delayMs = Math.min(CLEAR_OPERATION_POLL_MAX_DELAY_MS, delayMs * 2);
+    }
   }
 
   async deleteConversation(id: string, key: string): Promise<void> {

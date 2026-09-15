@@ -46,7 +46,7 @@ export interface ConversationsNamespace {
   listForAgent(agentId: string, cursor?: string): Promise<ConversationListPage>;
   create(command: CreateConversationCommand): Promise<ConversationProjection>;
   update(command: UpdateConversationCommand): Promise<ConversationProjection>;
-  clear(conversationId: string, idempotencyKey: string): Promise<ConversationProjection>;
+  clear(conversationId: string, idempotencyKey: string, instanceId?: string): Promise<ConversationProjection>;
   delete(conversationId: string, idempotencyKey: string): Promise<void>;
 }
 
@@ -155,8 +155,8 @@ export class UnifiedMessageClient implements MessageClient {
       },
       create: (command) => composition.conversationCommand.createConversation(command),
       update: (command) => composition.conversationCommand.updateConversation(command),
-      clear: async (id, key) => {
-        const result = await composition.conversationCommand.clearConversation(id, key);
+      clear: async (id, key, instanceId) => {
+        const result = await composition.conversationCommand.clearConversation(id, key, instanceId);
         await this.recovery.recoverConversation(id);
         this.publishProjectionChange();
         return result;
