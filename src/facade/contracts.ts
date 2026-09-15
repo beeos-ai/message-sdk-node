@@ -214,7 +214,13 @@ export interface PrivateConversationDirectoryQueryPort {
 export interface ConversationCommandPort {
   createConversation(command: CreateConversationCommand): Promise<ConversationProjection>;
   updateConversation(command: UpdateConversationCommand): Promise<ConversationProjection>;
-  clearConversation(conversationId: string, idempotencyKey: string): Promise<ConversationProjection>;
+  /**
+   * Clear the conversation and wait for the durable runtime operation to
+   * reach a terminal state when the transport is asynchronous.
+   * `instanceId` is optional for composition compatibility, but Gateway
+   * runtimes require it to resolve the operation status endpoint.
+   */
+  clearConversation(conversationId: string, idempotencyKey: string, instanceId?: string): Promise<ConversationProjection>;
   deleteConversation(conversationId: string, idempotencyKey: string): Promise<void>;
 }
 
