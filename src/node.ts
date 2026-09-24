@@ -11,6 +11,4 @@ export type {
 export type {
   RuntimeDeliveryAuthorityLease,
   RuntimeDeliveryAuthorityPort,
-  RuntimeDeliveryToken,
-  RuntimeDeliveryTokenProvider,
 } from "./runtime-delivery.js";

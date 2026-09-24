@@ -23,7 +23,6 @@ import {
 import {
   NodeRuntimeDeliveryPort,
   type RuntimeDeliveryAuthorityPort,
-  type RuntimeDeliveryTokenProvider,
 } from "./runtime-delivery.js";
 import type { RuntimeDeliveryPort } from "./facade/contracts.js";
 import type { Logger, TokenProvider, TokenResponse } from "./types.js";
@@ -67,7 +66,6 @@ export interface NodeMessageClientComposition extends MessageClientComposition {
 export function createNodeRuntimeOnlyDeliveryComposition(options: {
   serviceUrl: string;
   authority: RuntimeDeliveryAuthorityPort;
-  deliveryTokenProvider: RuntimeDeliveryTokenProvider;
 }): { runtimeDelivery: RuntimeDeliveryPort } {
   const service = new URL(options.serviceUrl);
   if (!["http:", "https:"].includes(service.protocol) || service.username || service.password ||
@@ -75,7 +73,7 @@ export function createNodeRuntimeOnlyDeliveryComposition(options: {
   return { runtimeDelivery: new NodeRuntimeDeliveryPort(
     { serviceOrigin: async () => service.toString() },
     options.authority,
-    options.deliveryTokenProvider,
+    null,
   ) };
 }
 
