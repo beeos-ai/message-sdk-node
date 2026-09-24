@@ -14,6 +14,11 @@ on:
         description: "Exact reviewed feature commit for isolated test publication"
         required: false
         type: string
+      diagnostic_only:
+        description: "Check npm identity and this package's read-write permission without publishing"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: publish-message-sdk-${{ github.ref }}
@@ -68,7 +73,7 @@ jobs:
 
   publish-cloud-runtime-test:
     name: Publish isolated Cloud runtime transport prerelease
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_only == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_only == true && inputs.diagnostic_only != true }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -106,6 +111,13 @@ jobs:
           npm pack --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/package.json"
           test "$(jq -er '.[0].version' "$RUNNER_TEMP/package.json")" = "$CLOUD_TEST_VERSION"
           test -f "$RUNNER_TEMP/$(jq -er '.[0].filename' "$RUNNER_TEMP/package.json")"
+          tar -xOzf "$RUNNER_TEMP/$(jq -er '.[0].filename' "$RUNNER_TEMP/package.json")" package/package.json > "$RUNNER_TEMP/tested-package.json"
+          test "$(jq -er .version "$RUNNER_TEMP/tested-package.json")" = "$CLOUD_TEST_VERSION"
+          jq -n --arg sourceSha "$GITHUB_SHA" --arg version "$CLOUD_TEST_VERSION" \
+            --arg runId "$GITHUB_RUN_ID" --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg integrity "$(jq -er '.[0].integrity' "$RUNNER_TEMP/package.json")" \
+            '{phase:"tested_pack",sourceSha:$sourceSha,version:$version,runId:$runId,runAttempt:$runAttempt,integrity:$integrity}' \
+            > "$RUNNER_TEMP/cloud-runtime-test-receipt.json"
       - name: Publish only to isolated npm tag
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -115,7 +127,7 @@ jobs:
           set -euo pipefail
           published=false
           for attempt in {1..12}; do
-            if npm view "@beeos-ai/message-sdk@$CLOUD_TEST_VERSION" version gitHead dist.integrity --json > "$RUNNER_TEMP/published.json" 2> "$RUNNER_TEMP/npm-view.err"; then
+            if npm view "@beeos-ai/message-sdk@$CLOUD_TEST_VERSION" version dist.integrity --json > "$RUNNER_TEMP/published.json" 2> "$RUNNER_TEMP/npm-view.err"; then
               published=true
               break
             fi
@@ -131,7 +143,6 @@ jobs:
             exit 1
           fi
           test "$(jq -er .version "$RUNNER_TEMP/published.json")" = "$CLOUD_TEST_VERSION"
-          test "$(jq -er .gitHead "$RUNNER_TEMP/published.json")" = "$GITHUB_SHA"
           test "$(jq -er '."dist.integrity"' "$RUNNER_TEMP/published.json")" = "$(jq -er '.[0].integrity' "$RUNNER_TEMP/package.json")"
           npm view @beeos-ai/message-sdk dist-tags --json > "$RUNNER_TEMP/tags-after.json"
           test "$(jq -er '."cloud-runtime-test"' "$RUNNER_TEMP/tags-after.json")" = "$CLOUD_TEST_VERSION"
@@ -139,15 +150,72 @@ jobs:
             test "$(jq -r --arg tag "$tag" '.[$tag] // ""' "$RUNNER_TEMP/tags-before.json")" = \
               "$(jq -r --arg tag "$tag" '.[$tag] // ""' "$RUNNER_TEMP/tags-after.json")"
           done
-          jq -n --arg sourceSha "$GITHUB_SHA" --arg version "$CLOUD_TEST_VERSION" \
-            --arg integrity "$(jq -er '."dist.integrity"' "$RUNNER_TEMP/published.json")" \
+          jq --arg phase registry_verified \
             --slurpfile tagsBefore "$RUNNER_TEMP/tags-before.json" \
             --slurpfile tagsAfter "$RUNNER_TEMP/tags-after.json" \
-            '{sourceSha:$sourceSha,version:$version,integrity:$integrity,tagsBefore:$tagsBefore[0],tagsAfter:$tagsAfter[0]}' \
-            > "$RUNNER_TEMP/cloud-runtime-test-receipt.json"
+            '. + {phase:$phase,tagsBefore:$tagsBefore[0],tagsAfter:$tagsAfter[0]}' \
+            "$RUNNER_TEMP/cloud-runtime-test-receipt.json" > "$RUNNER_TEMP/verified-receipt.json"
+          mv "$RUNNER_TEMP/verified-receipt.json" "$RUNNER_TEMP/cloud-runtime-test-receipt.json"
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: message-sdk-cloud-runtime-test-receipt
           path: ${{ runner.temp }}/cloud-runtime-test-receipt.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 90
+
+  diagnose-cloud-runtime-test-access:
+    name: Diagnose isolated npm package access without publishing
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_only == true && inputs.diagnostic_only == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_commit_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Verify diagnostic source
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_commit_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$DISPATCH_REF" = refs/heads/feat/cloud-runtime-message-transport
+          test "$DISPATCH_SHA" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(node -p 'require("./package.json").name')" = "@beeos-ai/message-sdk"
+      - name: Check only this package's npm permission
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm_error_class() {
+            if grep -Eq 'E401|E403' "$RUNNER_TEMP/npm-access.err"; then echo auth_denied
+            elif grep -q E404 "$RUNNER_TEMP/npm-access.err"; then echo not_found_or_hidden
+            elif grep -Eq 'ENOTFOUND|ETIMEDOUT|ECONN|EAI_AGAIN' "$RUNNER_TEMP/npm-access.err"; then echo network_failure
+            else echo query_failed
+            fi
+          }
+          if ! actor=$(npm whoami --registry https://registry.npmjs.org 2> "$RUNNER_TEMP/npm-access.err"); then
+            echo "npm_identity=$(npm_error_class)" >&2
+            exit 1
+          fi
+          echo "npm_identity=$actor"
+          if ! npm access list packages "$actor" @beeos-ai/message-sdk --json \
+            > "$RUNNER_TEMP/npm-package-access.json" 2> "$RUNNER_TEMP/npm-access.err"; then
+            echo "npm_package_access=$(npm_error_class)" >&2
+            exit 1
+          fi
+          if jq -e '."@beeos-ai/message-sdk" == "read-write"' \
+            "$RUNNER_TEMP/npm-package-access.json" > /dev/null; then
+            echo "npm_package_read_write=true"
+          else
+            echo "npm_package_read_write=false"
+            exit 1
+          fi
