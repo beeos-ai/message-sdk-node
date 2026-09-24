@@ -4,6 +4,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      test_only:
+        description: "Publish only the reviewed Cloud runtime transport prerelease"
+        required: false
+        type: boolean
+        default: false
+      expected_commit_sha:
+        description: "Exact reviewed feature commit for isolated test publication"
+        required: false
+        type: string
 
 concurrency:
   group: publish-message-sdk-${{ github.ref }}
@@ -15,6 +25,7 @@ permissions:
 jobs:
   publish:
     name: Build & Publish
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.test_only != true) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,3 +65,89 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-cloud-runtime-test:
+    name: Publish isolated Cloud runtime transport prerelease
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_only == true }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CLOUD_TEST_VERSION: 2.0.17-cloud.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_commit_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Verify isolated source and version
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_commit_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$DISPATCH_REF" = refs/heads/feat/cloud-runtime-message-transport
+          test "$DISPATCH_SHA" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(node -p 'require("./package.json").version')" = "$CLOUD_TEST_VERSION"
+          versions=$(npm view @beeos-ai/message-sdk versions --json)
+          node -e 'if (JSON.parse(process.argv[1]).includes(process.argv[2])) process.exit(1)' "$versions" "$CLOUD_TEST_VERSION"
+          npm view @beeos-ai/message-sdk dist-tags --json > "$RUNNER_TEMP/tags-before.json"
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Pack the tested package
+        run: |
+          set -euo pipefail
+          npm pack --json --pack-destination "$RUNNER_TEMP" > "$RUNNER_TEMP/package.json"
+          test "$(jq -er '.[0].version' "$RUNNER_TEMP/package.json")" = "$CLOUD_TEST_VERSION"
+          test -f "$RUNNER_TEMP/$(jq -er '.[0].filename' "$RUNNER_TEMP/package.json")"
+      - name: Publish only to isolated npm tag
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "$RUNNER_TEMP/$(jq -er '.[0].filename' "$RUNNER_TEMP/package.json")" --ignore-scripts --access public --tag cloud-runtime-test
+      - name: Verify exact package and unchanged standard tags
+        run: |
+          set -euo pipefail
+          published=false
+          for attempt in {1..12}; do
+            if npm view "@beeos-ai/message-sdk@$CLOUD_TEST_VERSION" version gitHead dist.integrity --json > "$RUNNER_TEMP/published.json" 2> "$RUNNER_TEMP/npm-view.err"; then
+              published=true
+              break
+            fi
+            if ! grep -Eq 'E404|404 Not Found' "$RUNNER_TEMP/npm-view.err"; then
+              cat "$RUNNER_TEMP/npm-view.err" >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          if [ "$published" != true ]; then
+            echo "npm package remained unavailable after $attempt attempts" >&2
+            cat "$RUNNER_TEMP/npm-view.err" >&2
+            exit 1
+          fi
+          test "$(jq -er .version "$RUNNER_TEMP/published.json")" = "$CLOUD_TEST_VERSION"
+          test "$(jq -er .gitHead "$RUNNER_TEMP/published.json")" = "$GITHUB_SHA"
+          test "$(jq -er '."dist.integrity"' "$RUNNER_TEMP/published.json")" = "$(jq -er '.[0].integrity' "$RUNNER_TEMP/package.json")"
+          npm view @beeos-ai/message-sdk dist-tags --json > "$RUNNER_TEMP/tags-after.json"
+          test "$(jq -er '."cloud-runtime-test"' "$RUNNER_TEMP/tags-after.json")" = "$CLOUD_TEST_VERSION"
+          for tag in latest beta staging production-candidate; do
+            test "$(jq -r --arg tag "$tag" '.[$tag] // ""' "$RUNNER_TEMP/tags-before.json")" = \
+              "$(jq -r --arg tag "$tag" '.[$tag] // ""' "$RUNNER_TEMP/tags-after.json")"
+          done
+          jq -n --arg sourceSha "$GITHUB_SHA" --arg version "$CLOUD_TEST_VERSION" \
+            --arg integrity "$(jq -er '."dist.integrity"' "$RUNNER_TEMP/published.json")" \
+            --slurpfile tagsBefore "$RUNNER_TEMP/tags-before.json" \
+            --slurpfile tagsAfter "$RUNNER_TEMP/tags-after.json" \
+            '{sourceSha:$sourceSha,version:$version,integrity:$integrity,tagsBefore:$tagsBefore[0],tagsAfter:$tagsAfter[0]}' \
+            > "$RUNNER_TEMP/cloud-runtime-test-receipt.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: message-sdk-cloud-runtime-test-receipt
+          path: ${{ runner.temp }}/cloud-runtime-test-receipt.json
+          if-no-files-found: error
+          retention-days: 90

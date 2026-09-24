@@ -23,7 +23,9 @@ import {
 import {
   NodeRuntimeDeliveryPort,
   type RuntimeDeliveryAuthorityPort,
+  type RuntimeDeliveryTokenProvider,
 } from "./runtime-delivery.js";
+import type { RuntimeDeliveryPort } from "./facade/contracts.js";
 import type { Logger, TokenProvider, TokenResponse } from "./types.js";
 import { formatOpenClawDeliveryBoundary } from "./openclaw-delivery-observability.js";
 
@@ -59,6 +61,22 @@ export interface NodeMessageServiceTransport {
 export interface NodeMessageClientComposition extends MessageClientComposition {
   /** Composition-root only. Feature code receives only MessageClient. */
   readonly nodeTransport: NodeMessageServiceTransport;
+}
+
+/** Runtime-only Cloud delivery: no ordinary Message session or token provider. */
+export function createNodeRuntimeOnlyDeliveryComposition(options: {
+  serviceUrl: string;
+  authority: RuntimeDeliveryAuthorityPort;
+  deliveryTokenProvider: RuntimeDeliveryTokenProvider;
+}): { runtimeDelivery: RuntimeDeliveryPort } {
+  const service = new URL(options.serviceUrl);
+  if (!["http:", "https:"].includes(service.protocol) || service.username || service.password ||
+      service.search || service.hash) throw new Error("runtime Message Service URL is invalid");
+  return { runtimeDelivery: new NodeRuntimeDeliveryPort(
+    { serviceOrigin: async () => service.toString() },
+    options.authority,
+    options.deliveryTokenProvider,
+  ) };
 }
 
 /**

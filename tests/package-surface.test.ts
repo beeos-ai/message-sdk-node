@@ -32,6 +32,7 @@ describe("package entrypoint surface", () => {
     expect(Object.keys(node).sort()).toEqual([
       "createMessageClient",
       "createNodeMessageClientComposition",
+      "createNodeRuntimeOnlyDeliveryComposition",
     ]);
     expect(web.createMessageClient).toBe(root.createMessageClient);
     expect(reactNative.createMessageClient).toBe(root.createMessageClient);

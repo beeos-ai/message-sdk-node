@@ -21,6 +21,19 @@ export interface RuntimeDeliveryAuthorityPort {
   currentLease(): RuntimeDeliveryAuthorityLease | null;
 }
 
+/** Cloud Gateway's short-lived token is scoped to one exact current lease. */
+export interface RuntimeDeliveryToken {
+  readonly deliveryToken: string;
+  readonly expiresAt: number;
+  readonly instanceId: string;
+  readonly leaseId: string;
+  readonly handlerIdentity: string;
+  readonly runtimeEpoch: string;
+}
+
+export type RuntimeDeliveryTokenProvider =
+  (lease: RuntimeDeliveryAuthorityLease, signal: AbortSignal) => Promise<RuntimeDeliveryToken>;
+
 /**
  * Node durable runtime delivery. It owns the HTTP claim lifecycle; WSS may
  * wake a caller, but never becomes the command truth source.
@@ -34,7 +47,7 @@ export class NodeRuntimeDeliveryPort implements RuntimeDeliveryPort {
   constructor(
     private readonly origin: RuntimeDeliveryOriginPort,
     private readonly authority: RuntimeDeliveryAuthorityPort,
-    private readonly scopedDeliveryKey: string,
+    private readonly scopedDeliveryKey: string | RuntimeDeliveryTokenProvider,
   ) {
     if (!scopedDeliveryKey) throw new Error("runtime delivery key is required");
   }
@@ -65,7 +78,7 @@ class NodeRuntimeDeliveryConsumer implements RuntimeDeliveryConsumer {
   constructor(
     private readonly origin: RuntimeDeliveryOriginPort,
     private readonly authority: RuntimeDeliveryAuthorityPort,
-    private readonly scopedDeliveryKey: string,
+    private readonly scopedDeliveryKey: string | RuntimeDeliveryTokenProvider,
     private readonly options: RuntimeDeliveryConsumeOptions,
   ) {
     if (options.readCount !== undefined &&
@@ -411,13 +424,50 @@ class NodeRuntimeDeliveryConsumer implements RuntimeDeliveryConsumer {
     }
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${lease.runtimeLeaseCredential}`);
-    headers.set("x-runtime-delivery-key", this.scopedDeliveryKey);
+    let deliveryKey: string;
+    if (typeof this.scopedDeliveryKey === "string") {
+      deliveryKey = this.scopedDeliveryKey;
+    } else {
+      if (init.signal?.aborted) throw init.signal.reason;
+      const controller = new AbortController();
+      const onAbort = () => controller.abort(init.signal?.reason);
+      init.signal?.addEventListener("abort", onAbort, { once: true });
+      const timeout = setTimeout(() => controller.abort(new Error("runtime delivery token timed out")), 8_000);
+      timeout.unref?.();
+      try {
+        if (init.signal?.aborted) throw init.signal.reason;
+        deliveryKey = await abortable(this.leaseDeliveryToken(lease, controller.signal), controller.signal);
+      } finally {
+        clearTimeout(timeout);
+        init.signal?.removeEventListener("abort", onAbort);
+      }
+      this.assertCurrentLease(lease);
+      if (init.signal?.aborted) throw init.signal.reason;
+    }
+    headers.set("x-runtime-delivery-key", deliveryKey);
     if (executionGrant) headers.set("x-beeos-execution-grant", executionGrant);
     const response = await fetch(url, { ...init, headers, redirect: "error" });
     if (response.url && new URL(response.url).origin !== url.origin) {
       throw new Error("runtime delivery response origin changed");
     }
     return response;
+  }
+
+  private async leaseDeliveryToken(lease: RuntimeDeliveryAuthorityLease, signal: AbortSignal): Promise<string> {
+    if (typeof this.scopedDeliveryKey === "string") throw new Error("runtime delivery token provider missing");
+    const issued = await this.scopedDeliveryKey(lease, signal);
+    const now = Math.floor(Date.now() / 1_000);
+    const leaseExpiry = Date.parse(lease.leaseExpiresAt) / 1_000;
+    if (!issued || typeof issued.deliveryToken !== "string" ||
+        !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(issued.deliveryToken) ||
+        !Number.isSafeInteger(issued.expiresAt) ||
+        issued.expiresAt <= now || issued.expiresAt > now + 60 ||
+        !Number.isFinite(leaseExpiry) || issued.expiresAt > leaseExpiry ||
+        issued.instanceId !== lease.instanceId || issued.leaseId !== lease.leaseId ||
+        issued.handlerIdentity !== lease.handlerIdentity || issued.runtimeEpoch !== lease.runtimeEpoch) {
+      throw new Error("runtime delivery token does not match current lease");
+    }
+    return issued.deliveryToken;
   }
 
   private requireCurrentLease(): RuntimeDeliveryAuthorityLease {
@@ -609,13 +659,16 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-async function abortable(promise: Promise<void>, signal?: AbortSignal): Promise<void> {
-  if (!signal) return await promise;
-  if (signal.aborted) throw signal.reason;
-  await Promise.race([
-    promise,
-    new Promise<never>((_resolve, reject) => {
-      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
-    }),
-  ]);
+function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const onAbort = () => { cleanup(); reject(signal.reason); };
+    promise.then(
+      (value) => { cleanup(); resolve(value); },
+      (error) => { cleanup(); reject(error); },
+    );
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
