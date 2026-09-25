@@ -74,6 +74,80 @@ beforeEach(() => {
   realtimeMock.instances.splice(0);
 });
 
+describe("Gateway composition — sendMessage", () => {
+  it.each(["", "chat_message"] as const)(
+    "posts the legacy {message} body when type is %j",
+    async (type) => {
+      const bodies: unknown[] = [];
+      const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        bodies.push(init?.body ? JSON.parse(String(init.body)) : undefined);
+        return json({ success: true, data: { message_id: "request-1" } }, 202);
+      });
+      const composition = createGatewayMessageClientComposition({
+        gatewayUrl: "https://gateway.example",
+        platform: "web",
+        currentPrincipal: { currentPrincipalId: () => "user:u1" },
+        fetch: fetchMock,
+      });
+
+      await composition.messageCommand.sendMessage({
+        conversationId: "c1",
+        agentId: "agent-a",
+        clientMessageId: "request-1",
+        idempotencyKey: "request-1",
+        type,
+        content: { text: "hello", mentions: [{ agentId: "agent-b", name: "Bee" }] },
+      });
+
+      expect(bodies[0]).toEqual({
+        message: "hello",
+        mentions: [{ agentId: "agent-b", name: "Bee" }],
+        idempotency_key: "request-1",
+      });
+    },
+  );
+
+  it("posts user.continue content without requiring text", async () => {
+    const calls: Array<{ url: string; body?: unknown }> = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return json({ success: true, data: { message_id: "client-owned-uuid" } }, 202);
+    });
+    const composition = createGatewayMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      platform: "web",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      fetch: fetchMock,
+    });
+    const content = {
+      schema_version: "openclaw.user_input.v1",
+      request_id: "qreq_1",
+      answers: { environment: { answers: ["Staging"] } },
+    };
+
+    await composition.messageCommand.sendMessage({
+      conversationId: "c1",
+      agentId: "agent-a",
+      clientMessageId: "client-owned-uuid",
+      idempotencyKey: "client-owned-uuid",
+      type: "user.continue",
+      content,
+    });
+
+    expect(calls).toEqual([{
+      url: "https://gateway.example/api/v1/agents/agent-a/conversations/c1/messages",
+      body: {
+        type: "user.continue",
+        content,
+        idempotency_key: "client-owned-uuid",
+      },
+    }]);
+  });
+});
+
 describe("Gateway composition — web/desktop credentials", () => {
   it("uses the explicit root X-Request-ID without changing message identity", async () => {
     const headers: Headers[] = [];
