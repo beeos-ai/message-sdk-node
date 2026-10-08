@@ -37,9 +37,14 @@ jobs:
         id: check
         run: |
           LOCAL_VER=$(node -p "require('./package.json').version")
-          REMOTE_VER=$(npm view @beeos-ai/message-sdk version 2>/dev/null || echo "0.0.0")
+          REMOTE_VER=$(npm view "@beeos-ai/message-sdk@${LOCAL_VER}" version 2>/dev/null || echo "0.0.0")
           echo "local=${LOCAL_VER}" >> "$GITHUB_OUTPUT"
           echo "remote=${REMOTE_VER}" >> "$GITHUB_OUTPUT"
+          if [[ "$LOCAL_VER" == *"-"* ]]; then
+            echo "dist_tag=beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
           if [ "$LOCAL_VER" = "$REMOTE_VER" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Version ${LOCAL_VER} already published, skipping."
@@ -51,6 +56,6 @@ jobs:
 
       - name: Publish to npm
         if: steps.check.outputs.skip == 'false'
-        run: npm publish --access public
+        run: npm publish --access public --tag "${{ steps.check.outputs.dist_tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

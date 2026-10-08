@@ -228,8 +228,12 @@ export class ProjectionEngine {
   }
 
   private applyConversation(value: RealtimeConversation, revision?: string): boolean {
-    const incoming = conversationFromRealtime(value, revision);
     const current = this.snapshot.conversations[value.id];
+    const incoming = {
+      ...conversationFromRealtime(value, revision),
+      ...(value.modelOverrideId === undefined && current?.modelOverrideId !== undefined ? { modelOverrideId: current.modelOverrideId } : {}),
+      ...(value.reasoning === undefined && current?.reasoning !== undefined ? { reasoning: current.reasoning } : {}),
+    };
     if (
       current
       && compareDecimal(incoming.historyGeneration, current.historyGeneration) < 0
@@ -356,6 +360,7 @@ export function conversationFromRealtime(value: RealtimeConversation, revision?:
     id: value.id,
     ...(value.title === undefined ? {} : { title: value.title }),
     ...(value.modelOverrideId === undefined ? {} : { modelOverrideId: value.modelOverrideId }),
+    ...(value.reasoning === undefined ? {} : { reasoning: parseConversationReasoning(value.reasoning) }),
     state: value.state,
     historyGeneration: value.historyGeneration,
     revision: revision ?? value.metadataVersion,
@@ -473,3 +478,4 @@ function freezeSnapshot(snapshot: DomainProjectionSnapshot): DomainProjectionSna
     hydrationByConversation: Object.freeze({ ...snapshot.hydrationByConversation }),
   });
 }
+import { parseConversationReasoning } from "./reasoning.js";

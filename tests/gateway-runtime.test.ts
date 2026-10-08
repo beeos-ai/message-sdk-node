@@ -31,6 +31,22 @@ import { createMessageClient } from "../src/unified-client.js";
 
 const at = "2026-08-02T00:00:00.000Z";
 
+it.each(["session/set_model", "session/set_reasoning"])("can query %s while its initial response is lost", async (method) => {
+  const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    if (init?.method !== "GET") return new Promise<Response>(() => {});
+    return json({ ...clearOperation("succeeded"), method, id: "op-settings" });
+  });
+  const composition = createGatewayMessageClientComposition({ gatewayUrl: "https://gateway.example", platform: "web",
+    currentPrincipal: { currentPrincipalId: () => "user-1" }, fetch: fetch as typeof globalThis.fetch });
+  void composition.runtimeMethods.executeMethod({ operationId: "op-settings", instanceId: "instance-1",
+    target: { scope: "conversation", platformAgentId: "agent-a", conversationId: "c1" }, method,
+    params: method === "session/set_model" ? { modelOverrideId: "p/m" } : { conversationId: "c1", modelId: "p/m", reasoningOverrideId: "high" },
+    idempotencyKey: "op-settings" });
+  const result = await composition.runtimeMethods.getOperation("op-settings");
+  expect(result.status).toBe("succeeded");
+  expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/instances/instance-1/operations/op-settings"))).toBe(true);
+});
+
 function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
     status,

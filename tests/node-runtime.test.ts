@@ -411,6 +411,15 @@ describe("Node Message Service composition route matrix", () => {
 });
 
 describe("Node HTTP message hydrate field mapping", () => {
+  it.each(["", "none", "high"])("normalizes legacy empty metadata nulls without changing %s", async (level) => {
+    vi.stubGlobal("fetch", vi.fn(async () => json({ id: "c1", state: "open", history_generation: 1,
+      metadata_version: 1, updated_at: at, metadata: { reasoningModelId: "p/m",
+        reasoningOverrideId: level, reasoningEffectiveId: level, reasoningDefaultId: "" } })));
+    const composition = createNodeMessageClientComposition(options());
+    const result = await composition.conversationQuery.getConversation("c1");
+    expect(result.reasoning).toEqual({ modelId: "p/m", reasoningOverrideId: level || null,
+      effectiveReasoningId: level || null, defaultReasoningId: null });
+  });
   it("maps reply_to and stop_reason from HTTP hydrate payloads", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
       const url = String(input);

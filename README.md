@@ -188,3 +188,13 @@ authentication helpers and credential types are available from `/auth`.
 ## License
 
 MIT.
+## Conversation reasoning (2.0.17-thinking.0 candidate)
+
+Conversation projections now preserve `reasoning` across realtime and durable
+HTTP recovery. Missing fields from old servers are distinct from explicit null
+resets. A conversation-scoped `session/set_reasoning` command must bind its
+`params.conversationId` to the same target conversation.
+
+This candidate is prepared locally, not published. Publish the exact built
+artifact before downstream frozen-lock installation; do not replace a released
+version's bytes.

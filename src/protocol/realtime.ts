@@ -93,6 +93,7 @@ export interface RealtimeConversation {
   id: string;
   title?: string;
   modelOverrideId?: string | null;
+  reasoning?: import("../facade/reasoning.js").ConversationReasoning | null;
   state: "open" | "closed";
   metadataVersion: string;
   historyGeneration: string;

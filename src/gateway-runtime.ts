@@ -408,6 +408,13 @@ class GatewayHttpAdapter {
     if (command.method === "session/set_model") {
       return this.executeSetModel(command);
     }
+    if (command.method === "session/set_reasoning") {
+      if (command.target.scope !== "conversation") throw new Error("reasoning requires conversation scope");
+      const params = record(command.params);
+      if (params.conversationId !== command.target.conversationId) throw new Error("reasoning target mismatch");
+    }
+    // Recovery must work even if the initial HTTP response never arrives.
+    this.instancesByOperation.set(command.operationId, command.instanceId);
     const response = await this.callResponse(
       "POST",
       `/api/v1/instances/${segment(command.instanceId)}/methods`,
@@ -459,6 +466,7 @@ class GatewayHttpAdapter {
     if (modelOverrideId !== null && typeof modelOverrideId !== "string") {
       throw new Error("session/set_model requires modelOverrideId string or null");
     }
+    this.instancesByOperation.set(command.operationId, command.instanceId);
     const response = await this.callResponse(
       "PUT",
       `/api/v1/agents/${segment(command.target.platformAgentId)}/conversations/${segment(command.target.conversationId)}/model`,
@@ -752,6 +760,7 @@ function conversation(value: unknown, expectedAgentId?: string): ConversationPro
     ...(agentId ? { agentId } : {}),
     title: optionalString(raw.title),
     ...(modelOverrideId === undefined ? {} : { modelOverrideId }),
+    ...(raw.reasoning === undefined ? {} : { reasoning: parseConversationReasoning(raw.reasoning) }),
     state: raw.state === "closed" ? "closed" : "open",
     historyGeneration: decimal(raw.historyGeneration ?? raw.history_generation),
     revision: decimal(raw.metadataVersion ?? raw.metadata_version),
@@ -1008,3 +1017,4 @@ function unixMicroseconds(value: string): string {
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
+import { parseConversationReasoning } from "./facade/reasoning.js";
