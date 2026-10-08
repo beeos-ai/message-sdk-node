@@ -619,9 +619,20 @@ class NodeHttpError extends Error {
 
 function conversation(value: unknown): ConversationProjection {
   const raw = record(value);
+  const metadata = raw.metadata && typeof raw.metadata === "object" ? record(raw.metadata) : {};
+  // Legacy HTTP metadata encodes null as "" (map[string]string). Typed
+  // reasoning receipts below remain strict; the literal "none" is not null.
+  const metadataLevel = (value: unknown) => value === "" ? null : value ?? null;
+  const reasoning = Object.prototype.hasOwnProperty.call(raw, "reasoning") ? raw.reasoning
+    : metadata.reasoningModelId ? {
+      modelId: metadata.reasoningModelId, reasoningOverrideId: metadataLevel(metadata.reasoningOverrideId),
+      effectiveReasoningId: metadataLevel(metadata.reasoningEffectiveId), defaultReasoningId: metadataLevel(metadata.reasoningDefaultId),
+    } : Object.prototype.hasOwnProperty.call(raw, "metadata") ? null : undefined;
   return {
     id: requiredString(raw.id),
     title: optionalString(raw.title),
+    ...(reasoning === undefined ? {} : { reasoning: parseConversationReasoning(reasoning) }),
+    modelOverrideId: optionalString(raw.modelOverrideId ?? metadata.modelOverrideId),
     state: raw.state === "closed" ? "closed" : "open",
     historyGeneration: decimal(raw.history_generation ?? raw.historyGeneration),
     revision: decimal(raw.metadata_version ?? raw.metadataVersion),
@@ -709,3 +720,4 @@ function decodeOptionalRuntimeDispatch(
     ? {}
     : { runtimeDispatch: decodeRuntimeDispatchReceipt(value) };
 }
+import { parseConversationReasoning } from "./facade/reasoning.js";

@@ -13,6 +13,7 @@ export interface ConversationProjection {
   readonly title?: string;
   /** Canonical server projection: absent=unknown, null=explicitly cleared. */
   readonly modelOverrideId?: string | null;
+  readonly reasoning?: import("./reasoning.js").ConversationReasoning | null;
   readonly state: "open" | "closed";
   readonly historyGeneration: string;
   readonly revision: string;
