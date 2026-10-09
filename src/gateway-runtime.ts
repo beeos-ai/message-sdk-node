@@ -335,7 +335,6 @@ class GatewayHttpAdapter {
 
   async sendMessage(command: SendMessageCommand): Promise<SendMessageReceipt> {
     if (!command.agentId) throw new Error("React Native message send requires explicit agentId");
-    // Local validation fails before transport; it is not an unknown send.
     const body = gatewaySendBody(command);
     this.bindConversation(command.conversationId, command.agentId);
     const agentId = this.agentFor(command.conversationId);
@@ -924,47 +923,12 @@ function unwrap(value: unknown): unknown {
 }
 
 function gatewaySendBody(command: SendMessageCommand): Record<string, unknown> {
-  if (command.type === "user.continue") {
-    return {
-      type: "user.continue",
-      content: command.content,
-      idempotency_key: command.idempotencyKey,
-    };
-  }
-  if (command.type !== "" && command.type !== "chat_message") {
-    throw new Error("Gateway user message type is not allowed");
-  }
-  const mentions = messageMentions(command.content);
+  // Sender permissions and legacy chat normalization belong to Gateway.
   return {
-    message: messageText(command.content),
-    ...(mentions ? { mentions } : {}),
+    type: command.type,
+    content: command.content,
     idempotency_key: command.idempotencyKey,
   };
-}
-
-function messageText(content: JsonValue): string {
-  if (
-    typeof content === "object" && content !== null && !Array.isArray(content)
-    && typeof content.text === "string"
-  ) return content.text;
-  throw new Error("Gateway chat_message content requires a text field");
-}
-
-function messageMentions(content: JsonValue): Array<{ agentId: string; name: string }> | undefined {
-  if (
-    typeof content !== "object" || content === null || Array.isArray(content)
-    || !Array.isArray(content.mentions)
-  ) return undefined;
-
-  const mentions = content.mentions.flatMap((value) => {
-    if (
-      typeof value !== "object" || value === null || Array.isArray(value)
-      || typeof value.agentId !== "string"
-      || typeof value.name !== "string"
-    ) return [];
-    return [{ agentId: value.agentId, name: value.name }];
-  });
-  return mentions.length > 0 ? mentions : undefined;
 }
 
 function messageState(value: unknown): MessageProjection["state"] {

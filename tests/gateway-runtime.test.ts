@@ -91,17 +91,28 @@ beforeEach(() => {
 });
 
 describe("Gateway composition — sendMessage", () => {
-  it("rejects an Agent message before HTTP instead of flattening it into a user chat", async () => {
-    const fetchMock = vi.fn(async () => json({ success: true, data: { message_id: "unexpected" } }, 202));
+  it.each([{ content: null }, { content: ["A", "B"] }, { content: "free text" }, { content: 42 }, { content: false }])("passes JSON content $content without business parsing", async ({ content }) => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => json({ success: true, data: { message_id: "generic-id" } }, 202));
+    const composition = createGatewayMessageClientComposition({ gatewayUrl: "https://gateway.example", platform: "web",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" }, fetch: fetchMock });
+    await composition.messageCommand.sendMessage({ conversationId: "c1", agentId: "agent-a", clientMessageId: "generic-id",
+      idempotencyKey: "generic-id", type: "user.future", content });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ type: "user.future", content, idempotency_key: "generic-id" });
+  });
+  it("leaves sender permissions to Gateway and preserves its definitive rejection", async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => json({ error: "forbidden sender type" }, 403));
     const composition = createGatewayMessageClientComposition({ gatewayUrl: "https://gateway.example", platform: "web",
       currentPrincipal: { currentPrincipalId: () => "user:u1" }, fetch: fetchMock });
     await expect(composition.messageCommand.sendMessage({ conversationId: "c1", agentId: "agent-a",
       clientMessageId: "answer-id", idempotencyKey: "answer-id", type: "agent.input_required",
-      content: { text: "must not become user chat" } })).rejects.toThrow("type is not allowed");
-    expect(fetchMock).not.toHaveBeenCalled();
+      content: { text: "must not become user chat" } })).rejects.toMatchObject({ status: 403 });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      type: "agent.input_required", content: { text: "must not become user chat" }, idempotency_key: "answer-id",
+    });
   });
   it.each(["", "chat_message"] as const)(
-    "posts the legacy {message} body when type is %j",
+    "preserves the typed chat envelope when type is %j",
     async (type) => {
       const bodies: unknown[] = [];
       const fetchMock = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
@@ -125,14 +136,14 @@ describe("Gateway composition — sendMessage", () => {
       });
 
       expect(bodies[0]).toEqual({
-        message: "hello",
-        mentions: [{ agentId: "agent-b", name: "Bee" }],
+        type,
+        content: { text: "hello", mentions: [{ agentId: "agent-b", name: "Bee" }] },
         idempotency_key: "request-1",
       });
     },
   );
 
-  it("posts user.continue content without requiring text", async () => {
+  it.each(["user.continue", "user.preferences.changed", "user.future-v2"])("posts opaque %s content without requiring text", async (type) => {
     const calls: Array<{ url: string; body?: unknown }> = [];
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       calls.push({
@@ -158,14 +169,14 @@ describe("Gateway composition — sendMessage", () => {
       agentId: "agent-a",
       clientMessageId: "client-owned-uuid",
       idempotencyKey: "client-owned-uuid",
-      type: "user.continue",
+      type,
       content,
     });
 
     expect(calls).toEqual([{
       url: "https://gateway.example/api/v1/agents/agent-a/conversations/c1/messages",
       body: {
-        type: "user.continue",
+        type,
         content,
         idempotency_key: "client-owned-uuid",
       },

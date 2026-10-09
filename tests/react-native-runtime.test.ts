@@ -278,7 +278,7 @@ describe("React Native Gateway composition", () => {
     expect(calls[1]).toMatchObject({
       url: "https://gateway.example/api/v1/agents/agent-a/conversations/c1/messages",
       method: "POST",
-      body: { message: "hello", idempotency_key: "message-key" },
+      body: { type: "chat_message", content: { text: "hello" }, idempotency_key: "message-key" },
     });
     expect(calls[2]).toMatchObject({
       url: "https://gateway.example/api/v1/instances/i1/methods",
@@ -334,8 +334,10 @@ describe("React Native Gateway composition", () => {
     expect(calls).toEqual([{
       url: "https://gateway.example/api/v1/agents/agent-a/conversations/c1/messages",
       body: {
-        message: "delegate this",
-        mentions: [{ agentId: "agent-target", name: "Target" }],
+        type: "chat_message",
+        content: { text: "delegate this", mentions: [
+          { agentId: "agent-target", name: "Target", ignored: "not-forwarded" }, "invalid",
+        ] },
         idempotency_key: "message-key",
       },
     }]);
