@@ -335,19 +335,15 @@ class GatewayHttpAdapter {
 
   async sendMessage(command: SendMessageCommand): Promise<SendMessageReceipt> {
     if (!command.agentId) throw new Error("React Native message send requires explicit agentId");
+    // Local validation fails before transport; it is not an unknown send.
+    const body = gatewaySendBody(command);
     this.bindConversation(command.conversationId, command.agentId);
     const agentId = this.agentFor(command.conversationId);
-    const text = messageText(command.content);
-    const mentions = messageMentions(command.content);
     try {
       const response = await this.call(
         "POST",
         `/api/v1/agents/${segment(agentId)}/conversations/${segment(command.conversationId)}/messages`,
-        {
-          message: text,
-          ...(mentions ? { mentions } : {}),
-          idempotency_key: command.idempotencyKey,
-        },
+        body,
         {
           "Idempotency-Key": command.idempotencyKey,
           // One user turn keeps the caller-owned UUID across Web, Gateway,
@@ -925,6 +921,25 @@ function unwrap(value: unknown): unknown {
     return raw.data;
   }
   return value;
+}
+
+function gatewaySendBody(command: SendMessageCommand): Record<string, unknown> {
+  if (command.type === "user.continue") {
+    return {
+      type: "user.continue",
+      content: command.content,
+      idempotency_key: command.idempotencyKey,
+    };
+  }
+  if (command.type !== "" && command.type !== "chat_message") {
+    throw new Error("Gateway user message type is not allowed");
+  }
+  const mentions = messageMentions(command.content);
+  return {
+    message: messageText(command.content),
+    ...(mentions ? { mentions } : {}),
+    idempotency_key: command.idempotencyKey,
+  };
 }
 
 function messageText(content: JsonValue): string {
