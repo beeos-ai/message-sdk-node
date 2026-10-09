@@ -21,6 +21,7 @@ import type {
   UpdateConversationCommand,
 } from "./facade/contracts.js";
 import type { JsonValue } from "./protocol/index.js";
+import { parseApprovalUserAction } from "./approval/protocol.generated.js";
 import {
   decodeRuntimeDispatchReceipt,
   RuntimeDispatchContractError,
@@ -337,6 +338,25 @@ class GatewayHttpAdapter {
     if (!command.agentId) throw new Error("React Native message send requires explicit agentId");
     this.bindConversation(command.conversationId, command.agentId);
     const agentId = this.agentFor(command.conversationId);
+    if (command.type === "user.continue") {
+      const action = parseApprovalUserAction(record(command.content).payload);
+      if (!action || action.kind !== "approval_decision" || action.sessionId !== command.conversationId ||
+          action.actionId !== command.idempotencyKey || action.actionId !== command.clientMessageId || command.replyTo)
+        throw new Error("INVALID_APPROVAL_ACTION");
+      try {
+        const response = await this.callResponse("POST",
+          `/api/v1/agents/${segment(agentId)}/conversations/${segment(command.conversationId)}/approvals/${segment(action.requestId)}/actions`,
+          action, { "Idempotency-Key": action.actionId });
+        const result = record(unwrap(await response.json()));
+        if (response.status !== 202 || result.status !== "accepted" || result.requestId !== action.requestId ||
+            result.actionId !== action.actionId || result.messageId !== action.actionId) throw new Error("approval action receipt mismatch");
+        return { messageId: action.actionId, outcome: "accepted" };
+      } catch (error) {
+        if (error instanceof GatewayHttpError) throw error;
+        throw new OutcomeUnknownError({ phase: "open", conversationId: command.conversationId,
+          messageId: command.clientMessageId, idempotencyKey: command.idempotencyKey, cause: asError(error) });
+      }
+    }
     const text = messageText(command.content);
     const mentions = messageMentions(command.content);
     try {

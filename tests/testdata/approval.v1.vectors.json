@@ -1,0 +1,410 @@
+{
+  "protocol": "beeos.approval.v1",
+  "actions": [
+    {
+      "name": "approve_once",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": true
+    },
+    {
+      "name": "deny",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "deny"
+      },
+      "valid": true
+    },
+    {
+      "name": "cancel",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "cancel"
+      },
+      "valid": true
+    },
+    {
+      "name": "session allow always",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_allow_always",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "scope": "session"
+      },
+      "valid": true
+    },
+    {
+      "name": "reject protocol beeos.approval.v2",
+      "value": {
+        "protocol": "beeos.approval.v2",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject requestRevision 0",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 0,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject requestRevision 1.5",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1.5,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject requestRevision 9007199254740992",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 9007199254740992,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject decision allow_always",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "allow_always"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject requestId ",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject taskId  task_1",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": " task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject decision accept",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "accept"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject principalId user:forged",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once",
+        "principalId": "user:forged"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject matcher {'argv': '*'}",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once",
+        "matcher": {
+          "argv": "*"
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "reject fingerprint abc",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once",
+        "fingerprint": "abc"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject reply_to msg_1",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once",
+        "reply_to": "msg_1"
+      },
+      "valid": false
+    },
+    {
+      "name": "missing protocol",
+      "value": {
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "missing kind",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "missing requestId",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "missing requestRevision",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "missing sessionId",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "missing taskId",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "actionId": "act_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "missing actionId",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "decision": "approve_once"
+      },
+      "valid": false
+    },
+    {
+      "name": "missing decision",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_decision",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1"
+      },
+      "valid": false
+    },
+    {
+      "name": "reject global card grant",
+      "value": {
+        "protocol": "beeos.approval.v1",
+        "kind": "approval_allow_always",
+        "requestId": "apr_1",
+        "requestRevision": 1,
+        "sessionId": "conv_1",
+        "taskId": "task_1",
+        "actionId": "act_1",
+        "scope": "global"
+      },
+      "valid": false
+    }
+  ],
+  "settings": [
+    {
+      "name": "full settings",
+      "value": {
+        "defaultMode": "ask",
+        "operationModes": {},
+        "reviewer": "user"
+      },
+      "partial": false,
+      "valid": true
+    },
+    {
+      "name": "partial override",
+      "value": {
+        "operationModes": {
+          "process.exec": "deny"
+        }
+      },
+      "partial": true,
+      "valid": true
+    },
+    {
+      "name": "empty override",
+      "value": {},
+      "partial": true,
+      "valid": true
+    },
+    {
+      "name": "unknown operation",
+      "value": {
+        "operationModes": {
+          "unknown": "ask"
+        }
+      },
+      "partial": true,
+      "valid": false
+    },
+    {
+      "name": "unknown mode",
+      "value": {
+        "defaultMode": "yolo"
+      },
+      "partial": true,
+      "valid": false
+    },
+    {
+      "name": "settings cannot mutate rules",
+      "value": {
+        "defaultMode": "ask",
+        "operationModes": {},
+        "reviewer": "user",
+        "rules": []
+      },
+      "partial": false,
+      "valid": false
+    }
+  ]
+}
