@@ -363,6 +363,18 @@ describe("Node Message Service composition route matrix", () => {
     expect(receipt.runtimeDispatch).toEqual(runtimeDispatch);
   });
 
+  it("preserves generic outer context on Node sends and authoritative HTTP snapshots", async()=>{
+    const deliveryContext={target_agent_id:"a",delivery_principal:"i",runtime_epoch:"7",scope:{kind:"conversation_turn",id:"s"},parent_message_id:"parent"};
+    const bodies: unknown[]=[];
+    vi.stubGlobal("fetch",vi.fn(async(_input:string|URL|Request,init?:RequestInit)=>{
+      if(init?.body) bodies.push(JSON.parse(String(init.body)));
+      return json({id:"message",conversation_id:"c1",type:"agent.future",sender:"i",content:{arbitrary:true},delivery_context:deliveryContext,state:"completed",history_generation:"0",offset:"1",created_at:at,updated_at:at},201);
+    }));
+    const c=createNodeMessageClientComposition(options());
+    await c.messageCommand.sendMessage({conversationId:"c1",clientMessageId:"message",idempotencyKey:"message",type:"agent.future",content:{arbitrary:true},deliveryContext});
+    expect(bodies[0]).toEqual({type:"agent.future",content:{arbitrary:true},delivery_context:deliveryContext});
+    const row=await c.messageQuery.getMessage!("c1","message");expect(row.deliveryContext).toEqual(deliveryContext);expect(row.content).toEqual({arbitrary:true});
+  });
   it("posts user.continue as type/content without requiring text", async () => {
     const bodies: unknown[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {

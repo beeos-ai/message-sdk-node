@@ -373,7 +373,7 @@ class NodeMessageHttpAdapter {
       const response = await this.requestResponse(
         "POST",
         `/api/v2/conversations/${encodeURIComponent(command.conversationId)}/messages`,
-        { type: command.type, content: command.content, reply_to: command.replyTo },
+        { type: command.type, content: command.content, reply_to: command.replyTo, delivery_context: command.deliveryContext },
         command.idempotencyKey,
       );
       const raw = record(await response.json());
@@ -413,6 +413,7 @@ class NodeMessageHttpAdapter {
           id: command.clientMessageId,
           type: command.type,
           content: command.content,
+          delivery_context: command.deliveryContext,
           reply_to: command.replyTo,
           state: "streaming",
         },
@@ -658,6 +659,7 @@ function message(value: unknown): MessageProjection {
     type: requiredString(raw.type),
     body: optionalString(raw.body) ?? "",
     content: (raw.content ?? null) as JsonValue,
+    ...(raw.delivery_context === undefined ? {} : { deliveryContext: raw.delivery_context as JsonValue }),
     ...(replyTo ? { replyTo } : {}),
     state: messageState(raw.state),
     ...(stopReason ? { stopReason } : {}),

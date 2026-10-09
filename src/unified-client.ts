@@ -42,6 +42,8 @@ type EventListener = (event: AnyRealtimeEventV1) => void;
 export interface ConversationsNamespace {
   watch(conversationId: string, agentId?: string): ConversationWatch;
   get(conversationId: string): Promise<ConversationProjection>;
+  /** Explicit authoritative HTTP recovery; no new subscription or transport cursor. */
+  refresh(conversationId: string): Promise<void>;
   list(cursor?: string): Promise<ConversationListPage>;
   listForAgent(agentId: string, cursor?: string): Promise<ConversationListPage>;
   create(command: CreateConversationCommand): Promise<ConversationProjection>;
@@ -147,6 +149,7 @@ export class UnifiedMessageClient implements MessageClient {
     this.conversations = {
       watch: (id, agentId) => this.watch(id, agentId),
       get: (id) => composition.conversationQuery.getConversation(id),
+      refresh: async (id) => { await this.recovery.recoverConversation(id); this.publishProjectionChange(); },
       list: (cursor) => composition.conversationQuery.listConversations(cursor),
       listForAgent: (agentId, cursor) => {
         const list = composition.conversationQuery.listConversationsForAgent;
@@ -454,6 +457,7 @@ export class UnifiedMessageClient implements MessageClient {
       type: command.type,
       body,
       content,
+      ...(command.contextMessageId ? { contextMessageId: command.contextMessageId } : {}),
       ...(command.replyTo ? { replyTo: command.replyTo } : {}),
       state,
       historyGeneration: conversation?.historyGeneration ?? "0",

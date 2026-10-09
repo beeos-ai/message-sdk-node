@@ -91,6 +91,12 @@ beforeEach(() => {
 });
 
 describe("Gateway composition — sendMessage", () => {
+  it("serializes a generic context selector without examining business content", async()=>{
+    const fetchMock=vi.fn(async(_input: string | URL | Request,_init?:RequestInit)=>json({success:true,data:{message_id:"response"}},202));
+    const composition=createGatewayMessageClientComposition({gatewayUrl:"https://gateway.example",platform:"web",currentPrincipal:{currentPrincipalId:()=>"user:u1"},fetch:fetchMock});
+    await composition.messageCommand.sendMessage({conversationId:"c1",agentId:"agent-a",type:"user.future",clientMessageId:"response",idempotencyKey:"response",contextMessageId:"original-agent-message",content:["opaque","A B"]});
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({type:"user.future",idempotency_key:"response",context_message_id:"original-agent-message",content:["opaque","A B"]});
+  });
   it.each([{ content: null }, { content: ["A", "B"] }, { content: "free text" }, { content: 42 }, { content: false }])("passes JSON content $content without business parsing", async ({ content }) => {
     const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => json({ success: true, data: { message_id: "generic-id" } }, 202));
     const composition = createGatewayMessageClientComposition({ gatewayUrl: "https://gateway.example", platform: "web",

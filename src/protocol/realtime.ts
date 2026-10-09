@@ -83,6 +83,7 @@ export interface RealtimeMessage extends RealtimeMessageIdentity {
   parts?: JsonValue;
   state: "streaming" | "completed" | "failed" | "refused" | "cancelled";
   stopReason?: string;
+  deliveryContext?: JsonValue;
   content?: JsonValue;
   createdAt: string;
   updatedAt: string;

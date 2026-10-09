@@ -323,6 +323,16 @@ describe("personal-only UnifiedMessageClient", () => {
     expect(state.conversationReads).toBeGreaterThan(readsBefore);
   });
 
+  it("retains a local reference for unknown delivery without minting trusted provenance",async()=>{
+    const state=fixture();state.composition.messageCommand.sendMessage=async()=>{const error=new Error("response lost");error.name="OutcomeUnknownError";throw error;};
+    const client=createMessageClient(state.composition);const watch=client.conversations.watch("c1");await watch.ready;
+    await expect(client.messages.send({conversationId:"c1",type:"user.future",content:["opaque",42],clientMessageId:"local-1",idempotencyKey:"local-1",contextMessageId:"original-1"})).rejects.toThrow("response lost");
+    expect(client.getSnapshot().messages["local-1"]).toMatchObject({state:"outcome_unknown",contextMessageId:"original-1",content:["opaque",42]});
+    expect(client.getSnapshot().messages["local-1"].deliveryContext).toBeUndefined();
+    watch.release();
+    await client.disconnect();
+  });
+
   it("deduplicates repeated eventId without inventing transport cursors", async () => {
     const state = fixture();
     const client = createMessageClient(state.composition);

@@ -791,6 +791,7 @@ function message(
     body: optionalString(raw.body) ?? "",
     ...(raw.parts === undefined ? {} : { parts: jsonValue(raw.parts) }),
     ...(content === undefined ? {} : { content }),
+    ...((raw.delivery_context ?? raw.deliveryContext) === undefined ? {} : { deliveryContext: jsonValue(raw.delivery_context ?? raw.deliveryContext) }),
     ...(optionalString(raw.replyTo ?? raw.reply_to ?? raw.inReplyTo ?? raw.in_reply_to)
       ? {
         replyTo: optionalString(
@@ -926,6 +927,8 @@ function gatewaySendBody(command: SendMessageCommand): Record<string, unknown> {
   // Sender permissions and legacy chat normalization belong to Gateway.
   return {
     type: command.type,
+    ...(command.contextMessageId ? { context_message_id: command.contextMessageId } : {}),
+    ...(command.deliveryContext === undefined ? {} : { delivery_context: command.deliveryContext }),
     content: command.content,
     idempotency_key: command.idempotencyKey,
   };
