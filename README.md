@@ -198,3 +198,15 @@ resets. A conversation-scoped `session/set_reasoning` command must bind its
 This candidate is prepared locally, not published. Publish the exact built
 artifact before downstream frozen-lock installation; do not replace a released
 version's bytes.
+
+## Approval v1 control delivery
+
+Import the strict action parser/types from `@beeos-ai/message-sdk/approval`. The
+package root continues to export only createMessageClient. In a Gateway runtime,
+messages.send with type user.continue accepts an explicit approval_decision only:
+actionId must equal clientMessageId and idempotencyKey, sessionId must match the
+conversation and replyTo is forbidden. It uses the dedicated authenticated
+approval action endpoint; HTTP accepted is not execution authorization. Normal
+text messages never become approval actions. Settings and Allow Always are not
+implemented by this initial transport. Generated protocol source and shared
+vectors are synchronized explicitly from beeos-types, not during build.
