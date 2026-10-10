@@ -195,7 +195,7 @@ describe("React Native Gateway composition", () => {
       .resolves.toMatchObject({ modelOverrideId: null });
   });
 
-  it("maps rename, send and typed method routes with caller-owned identities", async () => {
+  it("maps rename and send routes with caller-owned identities", async () => {
     const calls: Array<{
       url: string;
       method: string;
@@ -218,18 +218,6 @@ describe("React Native Gateway composition", () => {
             runtime_dispatch: { status: "accepted" },
           },
         }, 202);
-      }
-      if (value.url.endsWith("/methods")) {
-        return json({
-          jsonrpc: "2.0",
-          id: "op1",
-          result: {
-            status: "accepted",
-            operationId: "op1",
-            contractRevision: "2026-07-14.3",
-            transport: "service",
-          },
-        }, 202, { "X-BeeOS-Operation-Id": "op1" });
       }
       return json({ success: true, data: conversation() });
     });
@@ -254,21 +242,12 @@ describe("React Native Gateway composition", () => {
       type: "chat_message",
       content: { text: "hello" },
     });
-    const method = await composition.runtimeMethods.executeMethod({
-      operationId: "op1",
-      instanceId: "i1",
-      target: { scope: "instance" },
-      method: "instance/start",
-      params: {},
-      idempotencyKey: "operation-key",
-    });
 
     expect(receipt).toEqual({
       messageId: "message-key",
       outcome: "accepted",
       runtimeDispatch: { status: "accepted" },
     });
-    expect(method).toMatchObject({ operationId: "op1", outcome: "accepted" });
     expect(calls[0]).toMatchObject({
       url: "https://gateway.example/api/v1/agents/agent-a/conversations/c1",
       method: "PATCH",
@@ -280,18 +259,7 @@ describe("React Native Gateway composition", () => {
       method: "POST",
       body: { type: "chat_message", content: { text: "hello" }, idempotency_key: "message-key" },
     });
-    expect(calls[2]).toMatchObject({
-      url: "https://gateway.example/api/v1/instances/i1/methods",
-      method: "POST",
-      body: {
-        jsonrpc: "2.0",
-        id: "op1",
-        method: "instance/start",
-        params: {},
-      },
-    });
-    expect(calls[2].headers.get("X-BeeOS-Operation-Id")).toBe("op1");
-    expect(calls[2].headers.get("Idempotency-Key")).toBe("operation-key");
+    expect(calls).toHaveLength(2);
     expect(calls.every((call) => call.headers.get("Authorization") === "Bearer access-token"))
       .toBe(true);
   });
@@ -413,7 +381,7 @@ describe("React Native Gateway composition", () => {
     })).rejects.toMatchObject({ name: "RuntimeDispatchContractError" });
   });
 
-  it("routes session/set_model only through its typed conversation target", async () => {
+  it("routes conversation model changes through the conversation model route", async () => {
     const calls: Array<{ url: string; method: string; body?: unknown; headers: Headers }> = [];
     const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       calls.push({
@@ -435,38 +403,22 @@ describe("React Native Gateway composition", () => {
       currentPrincipal: { currentPrincipalId: () => "user:u1" },
       fetch: fetchMock,
     });
-    await expect(composition.runtimeMethods.executeMethod({
-      operationId: "wrong-target",
+    await expect(composition.runtimeMethods.setConversationModel({
+      operationId: "invalid-model",
       instanceId: "i1",
-      target: { scope: "instance" },
-      method: "session/set_model",
-      params: { modelOverrideId: "openai/gpt-4.1" },
-      idempotencyKey: "wrong-target-key",
-    })).rejects.toThrow("conversation target");
-    await expect(composition.runtimeMethods.executeMethod({
-      operationId: "unsupported",
-      instanceId: "i1",
-      target: {
-        scope: "conversation",
-        platformAgentId: "agent-a",
-        conversationId: "c1",
-      },
-      method: "session/clear",
-      params: {},
-      idempotencyKey: "unsupported-key",
-    })).rejects.toThrow("conversation_route_not_supported");
+      platformAgentId: "agent-a",
+      conversationId: "c1",
+      modelOverrideId: 42 as unknown as string,
+      idempotencyKey: "invalid-model-key",
+    })).rejects.toThrow("modelOverrideId string or null");
     expect(fetchMock).not.toHaveBeenCalled();
 
-    const receipt = await composition.runtimeMethods.executeMethod({
+    const receipt = await composition.runtimeMethods.setConversationModel({
       operationId: "model-op",
       instanceId: "i1",
-      target: {
-        scope: "conversation",
-        platformAgentId: "agent-a",
-        conversationId: "c1",
-      },
-      method: "session/set_model",
-      params: { modelOverrideId: "openai/gpt-4.1" },
+      platformAgentId: "agent-a",
+      conversationId: "c1",
+      modelOverrideId: "openai/gpt-4.1",
       idempotencyKey: "model-key",
     });
     expect(receipt).toMatchObject({ operationId: "model-op", outcome: "accepted" });

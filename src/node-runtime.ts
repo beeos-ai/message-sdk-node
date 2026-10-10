@@ -6,7 +6,7 @@ import { createCentrifugeFactory } from "./adapters/centrifuge-factory.js";
 import type {
   ConversationProjection,
   CreateConversationCommand,
-  ExecuteMethodReceipt,
+  RuntimeOperationReceipt,
   MessageClientComposition,
   MessageListPage,
   MessageProjection,
@@ -496,7 +496,7 @@ class NodeMessageHttpAdapter {
     );
   }
 
-  async executeMethod(): Promise<ExecuteMethodReceipt> {
+  async setConversationModel(): Promise<RuntimeOperationReceipt> {
     throw new Error("runtime methods are not available on the explicit message-service route");
   }
   async listActiveOperations(): Promise<never> {

@@ -81,7 +81,7 @@ function fixture() {
       async finalize() {},
     },
     runtimeMethods: {
-      async executeMethod(command: { operationId: string }) {
+      async setConversationModel(command: { operationId: string }) {
         return {
           operationId: command.operationId,
           outcome: "accepted" as const,
@@ -187,16 +187,16 @@ describe("personal-only UnifiedMessageClient", () => {
     expect(client.getSnapshot().recoveryError).toBeUndefined();
   });
 
-  it("treats HTTP 202 as queued and reduces typed session/new terminal success", async () => {
+  it("treats HTTP 202 as queued and reduces the set_model terminal success", async () => {
     const state = fixture();
     const client = createMessageClient(state.composition);
     await client.connect();
-    const receipt = await client.methods.execute({
+    const receipt = await client.methods.setConversationModel({
       operationId: "op-1",
       instanceId: "instance-1",
-      target: { scope: "instance" },
-      method: "session/new",
-      params: {},
+      platformAgentId: "agent-a",
+      conversationId: "c1",
+      modelOverrideId: "openai/gpt-4.1",
       idempotencyKey: "op-1",
     });
     expect(receipt.outcome).toBe("accepted");
@@ -222,8 +222,8 @@ describe("personal-only UnifiedMessageClient", () => {
         operation: {
           id: "op-1",
           instanceId: "instance-1",
-          target: { scope: "instance" },
-          method: "session/new",
+          target: { scope: "conversation", platformAgentId: "agent-a", conversationId: "c1" },
+          method: "session/set_model",
           capability: "session",
           contractRevision: "2026-07-14.3",
           transport: "service",
@@ -231,7 +231,7 @@ describe("personal-only UnifiedMessageClient", () => {
           status: "succeeded",
           effectState: "committed",
           terminal: true,
-          result: { sessionId: "session-1", conversationId: "c1" },
+          result: {},
           createdAt: at,
           updatedAt: at,
           revision: "2",
@@ -242,10 +242,7 @@ describe("personal-only UnifiedMessageClient", () => {
     expect(client.getSnapshot().operations["op-1"]).toMatchObject({
       status: "succeeded",
       terminal: true,
-      result: { sessionId: "session-1", conversationId: "c1" },
-    });
-    await vi.waitFor(() => {
-      expect(client.getSnapshot().conversations.c1).toBeDefined();
+      result: {},
     });
   });
 
@@ -298,12 +295,12 @@ describe("personal-only UnifiedMessageClient", () => {
     const watch = client.conversations.watch("c1");
     await watch.ready;
     await client.connect();
-    await client.methods.execute({
+    await client.methods.setConversationModel({
       operationId: "op-1",
       instanceId: "instance-1",
-      target: { scope: "instance" },
-      method: "session/new",
-      params: {},
+      platformAgentId: "agent-a",
+      conversationId: "c1",
+      modelOverrideId: "openai/gpt-4.1",
       idempotencyKey: "op-1",
     });
     state.setOperation({
