@@ -278,7 +278,7 @@ describe("React Native Gateway composition", () => {
     expect(calls[1]).toMatchObject({
       url: "https://gateway.example/api/v1/agents/agent-a/conversations/c1/messages",
       method: "POST",
-      body: { message: "hello", idempotency_key: "message-key" },
+      body: { type: "chat_message", content: { text: "hello" }, idempotency_key: "message-key" },
     });
     expect(calls[2]).toMatchObject({
       url: "https://gateway.example/api/v1/instances/i1/methods",
@@ -334,9 +334,54 @@ describe("React Native Gateway composition", () => {
     expect(calls).toEqual([{
       url: "https://gateway.example/api/v1/agents/agent-a/conversations/c1/messages",
       body: {
-        message: "delegate this",
-        mentions: [{ agentId: "agent-target", name: "Target" }],
+        type: "chat_message",
+        content: { text: "delegate this", mentions: [
+          { agentId: "agent-target", name: "Target", ignored: "not-forwarded" }, "invalid",
+        ] },
         idempotency_key: "message-key",
+      },
+    }]);
+  });
+
+  it("forwards user.continue content through the shared Gateway message request", async () => {
+    const calls: Array<{ url: string; body?: unknown }> = [];
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({
+        url: String(input),
+        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      });
+      return json({
+        success: true,
+        data: { messageId: "client-owned-uuid" },
+      }, 202);
+    });
+    const composition = createReactNativeMessageClientComposition({
+      gatewayUrl: "https://gateway.example",
+      accessTokenProvider: async () => "access-token",
+      currentPrincipal: { currentPrincipalId: () => "user:u1" },
+      fetch: fetchMock,
+    });
+    const content = {
+      schema_version: "beeos.user_input.v1",
+      request_id: "qreq_1",
+      answers: { environment: { answers: ["中文,标签", "B C"] } },
+    };
+
+    await composition.messageCommand.sendMessage({
+      conversationId: "c1",
+      agentId: "agent-a",
+      clientMessageId: "client-owned-uuid",
+      idempotencyKey: "client-owned-uuid",
+      type: "user.continue",
+      content,
+    });
+
+    expect(calls).toEqual([{
+      url: "https://gateway.example/api/v1/agents/agent-a/conversations/c1/messages",
+      body: {
+        type: "user.continue",
+        content,
+        idempotency_key: "client-owned-uuid",
       },
     }]);
   });

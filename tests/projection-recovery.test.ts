@@ -193,3 +193,15 @@ describe("HTTP recovery", () => {
     expect(projection.getSnapshot().conversations.c1).toEqual(conversation);
   });
 });
+
+it("keeps outer provenance identical in realtime and complete durable recovery",()=>{
+ const context={target_agent_id:"a",delivery_principal:"i",runtime_epoch:"9",scope:{kind:"conversation_turn",id:"s"},parent_message_id:"root"};
+ const engine=new ProjectionEngine();const event=messageEvent("message.created","1","body");
+ (event.data as any).message.deliveryContext=context;
+ engine.apply(event);expect(engine.getSnapshot().messages.m1.deliveryContext).toEqual(context);
+ const durable=engine.getSnapshot().messages.m1;
+ engine.commitHydration({conversation:{id:"c1",state:"open",historyGeneration:"1",revision:"1",updatedAt:at},messages:[durable],latestOffset:"1",historyBoundaryOffset:"0"});
+ expect(engine.getSnapshot().messages.m1.deliveryContext).toEqual(context);
+ const final=messageEvent("message.terminal","2","body");(final.data as any).message.deliveryContext=context;engine.apply(final);
+ expect(engine.getSnapshot().messages.m1.deliveryContext).toEqual(context);
+});

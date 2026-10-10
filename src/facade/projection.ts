@@ -378,6 +378,7 @@ export function messageFromRealtime(value: RealtimeMessage, offset: string): Mes
     type: value.type,
     body: value.body,
     ...(value.parts === undefined ? {} : { parts: value.parts }),
+    ...(value.deliveryContext === undefined ? {} : { deliveryContext: value.deliveryContext }),
     ...(value.content === undefined ? {} : { content: value.content }),
     ...(value.replyTo === undefined ? {} : { replyTo: value.replyTo }),
     state: value.state,

@@ -29,6 +29,10 @@ export interface MessageProjection {
   readonly type: string;
   readonly body: string;
   readonly parts?: JsonValue;
+  /** Immutable producer execution provenance. Never derived from content or a connection. */
+  readonly deliveryContext?: JsonValue;
+  /** Local command reference for optimistic/unknown delivery; never trusted provenance. */
+  readonly contextMessageId?: string;
   readonly content?: JsonValue;
   readonly replyTo?: string;
   readonly state: "optimistic" | "streaming" | "completed" | "failed" | "refused" | "cancelled" | "outcome_unknown";
@@ -143,6 +147,10 @@ export interface SendMessageCommand {
   readonly requestId?: string;
   readonly type: string;
   readonly content: JsonValue;
+  /** Generic reference selector on user ingress; Gateway resolves trusted provenance. */
+  readonly contextMessageId?: string;
+  /** Runtime/service producers only. Public Gateway rejects user-supplied provenance. */
+  readonly deliveryContext?: JsonValue;
   readonly replyTo?: string;
 }
 

@@ -335,19 +335,14 @@ class GatewayHttpAdapter {
 
   async sendMessage(command: SendMessageCommand): Promise<SendMessageReceipt> {
     if (!command.agentId) throw new Error("React Native message send requires explicit agentId");
+    const body = gatewaySendBody(command);
     this.bindConversation(command.conversationId, command.agentId);
     const agentId = this.agentFor(command.conversationId);
-    const text = messageText(command.content);
-    const mentions = messageMentions(command.content);
     try {
       const response = await this.call(
         "POST",
         `/api/v1/agents/${segment(agentId)}/conversations/${segment(command.conversationId)}/messages`,
-        {
-          message: text,
-          ...(mentions ? { mentions } : {}),
-          idempotency_key: command.idempotencyKey,
-        },
+        body,
         {
           "Idempotency-Key": command.idempotencyKey,
           // One user turn keeps the caller-owned UUID across Web, Gateway,
@@ -796,6 +791,7 @@ function message(
     body: optionalString(raw.body) ?? "",
     ...(raw.parts === undefined ? {} : { parts: jsonValue(raw.parts) }),
     ...(content === undefined ? {} : { content }),
+    ...((raw.delivery_context ?? raw.deliveryContext) === undefined ? {} : { deliveryContext: jsonValue(raw.delivery_context ?? raw.deliveryContext) }),
     ...(optionalString(raw.replyTo ?? raw.reply_to ?? raw.inReplyTo ?? raw.in_reply_to)
       ? {
         replyTo: optionalString(
@@ -927,29 +923,15 @@ function unwrap(value: unknown): unknown {
   return value;
 }
 
-function messageText(content: JsonValue): string {
-  if (
-    typeof content === "object" && content !== null && !Array.isArray(content)
-    && typeof content.text === "string"
-  ) return content.text;
-  throw new Error("Gateway chat_message content requires a text field");
-}
-
-function messageMentions(content: JsonValue): Array<{ agentId: string; name: string }> | undefined {
-  if (
-    typeof content !== "object" || content === null || Array.isArray(content)
-    || !Array.isArray(content.mentions)
-  ) return undefined;
-
-  const mentions = content.mentions.flatMap((value) => {
-    if (
-      typeof value !== "object" || value === null || Array.isArray(value)
-      || typeof value.agentId !== "string"
-      || typeof value.name !== "string"
-    ) return [];
-    return [{ agentId: value.agentId, name: value.name }];
-  });
-  return mentions.length > 0 ? mentions : undefined;
+function gatewaySendBody(command: SendMessageCommand): Record<string, unknown> {
+  // Sender permissions and legacy chat normalization belong to Gateway.
+  return {
+    type: command.type,
+    ...(command.contextMessageId ? { context_message_id: command.contextMessageId } : {}),
+    ...(command.deliveryContext === undefined ? {} : { delivery_context: command.deliveryContext }),
+    content: command.content,
+    idempotency_key: command.idempotencyKey,
+  };
 }
 
 function messageState(value: unknown): MessageProjection["state"] {
