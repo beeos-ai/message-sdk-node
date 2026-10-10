@@ -18,8 +18,6 @@ import type {
   ConversationWatch,
   CreateConversationCommand,
   DomainProjectionSnapshot,
-  ExecuteMethodCommand,
-  ExecuteMethodReceipt,
   ActiveOperationListPage,
   MessageClientComposition,
   MessageClientSnapshot,
@@ -31,8 +29,10 @@ import type {
   RealtimeSession,
   RuntimeDeliveryConsumeOptions,
   RuntimeDeliveryConsumer,
+  RuntimeOperationReceipt,
   SendMessageCommand,
   SendMessageReceipt,
+  SetConversationModelCommand,
   UpdateConversationCommand,
 } from "./facade/contracts.js";
 
@@ -81,7 +81,7 @@ export interface MessagesNamespace {
 }
 
 export interface MethodsNamespace {
-  execute(command: ExecuteMethodCommand): Promise<ExecuteMethodReceipt>;
+  setConversationModel(command: SetConversationModelCommand): Promise<RuntimeOperationReceipt>;
   listActive(instanceId: string, cursor?: string): Promise<ActiveOperationListPage>;
   get(operationId: string): Promise<OperationProjection>;
   cancel(operationId: string, idempotencyKey: string): Promise<OperationProjection>;
@@ -194,7 +194,7 @@ export class UnifiedMessageClient implements MessageClient {
         composition.messageStream.finalize(conversationId, messageId, state, key, stopReason),
     };
     this.methods = {
-      execute: (command) => this.execute(command),
+      setConversationModel: (command) => this.setConversationModel(command),
       listActive: (instanceId, cursor) =>
         composition.runtimeMethods.listActiveOperations(instanceId, cursor),
       get: (id) => composition.runtimeMethods.getOperation(id),
@@ -404,11 +404,16 @@ export class UnifiedMessageClient implements MessageClient {
     }
   }
 
-  private async execute(command: ExecuteMethodCommand): Promise<ExecuteMethodReceipt> {
-    if (!command.operationId || !command.instanceId || !command.method || !command.idempotencyKey) {
-      throw new Error("operationId, instanceId, method and idempotencyKey are required");
+  private async setConversationModel(
+    command: SetConversationModelCommand,
+  ): Promise<RuntimeOperationReceipt> {
+    if (
+      !command.operationId || !command.instanceId || !command.platformAgentId
+      || !command.conversationId || !command.idempotencyKey
+    ) {
+      throw new Error("operationId, instanceId, platformAgentId, conversationId and idempotencyKey are required");
     }
-    const receipt = await this.composition.runtimeMethods.executeMethod(command);
+    const receipt = await this.composition.runtimeMethods.setConversationModel(command);
     if (receipt.operationId !== command.operationId) {
       throw new Error("runtime method response operationId does not match the caller-owned operationId");
     }
@@ -428,9 +433,13 @@ export class UnifiedMessageClient implements MessageClient {
     if (receipt.outcome !== "completed" && this.projection.putOperation({
       id: receipt.operationId,
       instanceId: command.instanceId,
-      target: command.target,
-      method: command.method,
-      capability: command.method.split("/", 1)[0] || command.method,
+      target: {
+        scope: "conversation",
+        platformAgentId: command.platformAgentId,
+        conversationId: command.conversationId,
+      },
+      method: "session/set_model",
+      capability: "session",
       contractRevision: receipt.contractRevision,
       transport: "service",
       sequence: "0",

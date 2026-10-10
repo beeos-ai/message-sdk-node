@@ -7,8 +7,6 @@ import type {
   ConversationProjection,
   CreateConversationCommand,
   CurrentPrincipalPort,
-  ExecuteMethodCommand,
-  ExecuteMethodReceipt,
   LifecyclePort,
   MessageClientComposition,
   MessageListPage,
@@ -16,8 +14,10 @@ import type {
   OperationProjection,
   RealtimeConnectInput,
   RealtimeSessionPort,
+  RuntimeOperationReceipt,
   SendMessageCommand,
   SendMessageReceipt,
+  SetConversationModelCommand,
   UpdateConversationCommand,
 } from "./facade/contracts.js";
 import type { JsonValue } from "./protocol/index.js";
@@ -396,75 +396,18 @@ class GatewayHttpAdapter {
     throw new Error("Gateway composition does not expose agent reply stream writes");
   }
 
-  async executeMethod(command: ExecuteMethodCommand): Promise<ExecuteMethodReceipt> {
-    if (command.method === "session/clear" || command.method === "session/cancel") {
-      throw new Error("conversation_route_not_supported");
-    }
-    if (command.method === "session/set_model") {
-      return this.executeSetModel(command);
-    }
-    if (command.method === "session/set_reasoning") {
-      if (command.target.scope !== "conversation") throw new Error("reasoning requires conversation scope");
-      const params = record(command.params);
-      if (params.conversationId !== command.target.conversationId) throw new Error("reasoning target mismatch");
-    }
-    // Recovery must work even if the initial HTTP response never arrives.
-    this.instancesByOperation.set(command.operationId, command.instanceId);
-    const response = await this.callResponse(
-      "POST",
-      `/api/v1/instances/${segment(command.instanceId)}/methods`,
-      { jsonrpc: "2.0", id: command.operationId, method: command.method, params: command.params },
-      {
-        "Idempotency-Key": command.idempotencyKey,
-        "X-BeeOS-Operation-Id": command.operationId,
-      },
-    );
-    if (response.headers.get("X-BeeOS-Operation-Id") !== command.operationId) {
-      throw new Error("Gateway runtime response operationId is invalid");
-    }
-    const envelope = record(await response.json());
-    if (envelope.error !== undefined) throw new GatewayHttpError(response.status);
-    this.instancesByOperation.set(command.operationId, command.instanceId);
-    if (response.status === 202) {
-      const result = record(envelope.result);
-      if (
-        result.status !== "accepted"
-        || result.operationId !== command.operationId
-        || result.contractRevision !== CONTRACT_REVISION
-      ) throw new Error("Gateway runtime accepted response is invalid");
-      return {
-        operationId: command.operationId,
-        outcome: "accepted",
-        contractRevision: CONTRACT_REVISION,
-      };
-    }
-    if (response.status !== 200) throw new GatewayHttpError(response.status);
-    return {
-      operationId: command.operationId,
-      outcome: "completed",
-      result: jsonValue(envelope.result),
-      contractRevision: CONTRACT_REVISION,
-    };
-  }
-
-  private async executeSetModel(
-    command: ExecuteMethodCommand,
-  ): Promise<ExecuteMethodReceipt> {
-    if (
-      command.target.scope !== "conversation"
-    ) {
-      throw new Error("session/set_model requires a conversation target");
-    }
-    this.bindConversation(command.target.conversationId, command.target.platformAgentId);
-    const params = record(command.params);
-    const modelOverrideId = params.modelOverrideId;
+  async setConversationModel(
+    command: SetConversationModelCommand,
+  ): Promise<RuntimeOperationReceipt> {
+    const { modelOverrideId } = command;
     if (modelOverrideId !== null && typeof modelOverrideId !== "string") {
       throw new Error("session/set_model requires modelOverrideId string or null");
     }
+    this.bindConversation(command.conversationId, command.platformAgentId);
     this.instancesByOperation.set(command.operationId, command.instanceId);
     const response = await this.callResponse(
       "PUT",
-      `/api/v1/agents/${segment(command.target.platformAgentId)}/conversations/${segment(command.target.conversationId)}/model`,
+      `/api/v1/agents/${segment(command.platformAgentId)}/conversations/${segment(command.conversationId)}/model`,
       { modelOverrideId },
       {
         "Idempotency-Key": command.idempotencyKey,

@@ -117,8 +117,11 @@ composition passes the explicit agent target through `listForAgent`, `create`,
 or conflicting mappings and never infers them from events or authors.
 `conversations.update` is rename-only and requires the caller's
 `idempotencyKey`. Model changes use typed
-`methods.execute({ operationId, target, method: "session/set_model", ... })`;
-they are never converted into a generic conversation update.
+`methods.setConversationModel({ operationId, instanceId, platformAgentId, conversationId, modelOverrideId, idempotencyKey })`;
+they are never converted into a generic conversation update. 3.0.0 removes the
+generic `methods.execute` runtime-method call: skills, MCP servers, models and
+agent lifecycle are managed through BeeOS Cloud UHP harnesses, and
+`session/set_reasoning` has no SDK route.
 
 ## React Native Gateway composition (deprecated)
 

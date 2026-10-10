@@ -171,16 +171,16 @@ export type RuntimeMethodTarget =
       readonly conversationId: string;
     };
 
-export interface ExecuteMethodCommand {
+export interface SetConversationModelCommand {
   readonly operationId: string;
   readonly instanceId: string;
-  readonly target: RuntimeMethodTarget;
-  readonly method: string;
-  readonly params: JsonValue;
+  readonly platformAgentId: string;
+  readonly conversationId: string;
+  readonly modelOverrideId: string | null;
   readonly idempotencyKey: string;
 }
 
-export type ExecuteMethodReceipt = {
+export type RuntimeOperationReceipt = {
   readonly operationId: string;
   readonly outcome: "accepted" | "duplicate" | "outcome_unknown";
   readonly contractRevision: "2026-07-14.3";
@@ -270,7 +270,7 @@ export interface MessageStreamWriter {
 }
 
 export interface RuntimeMethodPort {
-  executeMethod(command: ExecuteMethodCommand): Promise<ExecuteMethodReceipt>;
+  setConversationModel(command: SetConversationModelCommand): Promise<RuntimeOperationReceipt>;
   listActiveOperations(instanceId: string, cursor?: string): Promise<ActiveOperationListPage>;
   getOperation(operationId: string): Promise<OperationProjection>;
   cancelOperation(operationId: string, idempotencyKey: string): Promise<OperationProjection>;
