@@ -11,6 +11,8 @@ import type {
   DomainProjectionSnapshot,
   MessageProjection,
   OperationProjection,
+  HistoryWindow,
+  RecentMessagePage,
 } from "./contracts.js";
 
 const EMPTY_SNAPSHOT: DomainProjectionSnapshot = Object.freeze({
@@ -22,6 +24,7 @@ const EMPTY_SNAPSHOT: DomainProjectionSnapshot = Object.freeze({
 });
 
 export interface ConversationHydrationCommit {
+  readonly window?: HistoryWindow;
   readonly conversation: ConversationProjection;
   readonly messages: readonly MessageProjection[];
   readonly historyBoundaryOffset: string;
@@ -51,20 +54,26 @@ export class ProjectionEngine {
 
   commitHydration(commit: ConversationHydrationCommit): boolean {
     const current = this.snapshot.conversations[commit.conversation.id];
-    if (current && compareDecimal(current.revision, commit.conversation.revision) > 0) return false;
+    if (current && (compareDecimal(current.historyGeneration, commit.conversation.historyGeneration) > 0 ||
+        compareDecimal(current.revision, commit.conversation.revision) > 0)) return false;
     if (isIdenticalHydration(this.snapshot, commit)) return false;
 
+    const latestOffset = commit.window && current?.historyGeneration === commit.conversation.historyGeneration
+      ? maxDecimal(this.snapshot.latestOffsetByConversation[commit.conversation.id] ?? "0", commit.latestOffset)
+      : commit.latestOffset;
     const conversations = { ...this.snapshot.conversations, [commit.conversation.id]: freeze(commit.conversation) };
     const messages: Record<string, MessageProjection> = {};
     for (const [id, message] of Object.entries(this.snapshot.messages)) {
-      if (message.conversationId !== commit.conversation.id) messages[id] = message;
+      if (message.conversationId !== commit.conversation.id ||
+          commit.window && message.historyGeneration === commit.conversation.historyGeneration) messages[id] = message;
     }
     for (const message of commit.messages) {
       if (message.conversationId !== commit.conversation.id) {
         throw new Error("hydration message belongs to another conversation");
       }
       if (message.historyGeneration !== commit.conversation.historyGeneration) continue;
-      messages[message.id] = freeze(message);
+      const existing = messages[message.id];
+      if (!existing || compareDecimal(existing.revision, message.revision) <= 0) messages[message.id] = freeze(message);
     }
     this.snapshot = freezeSnapshot({
       ...this.snapshot,
@@ -72,7 +81,7 @@ export class ProjectionEngine {
       messages,
       latestOffsetByConversation: {
         ...this.snapshot.latestOffsetByConversation,
-        [commit.conversation.id]: commit.latestOffset,
+        [commit.conversation.id]: latestOffset,
       },
       hydrationByConversation: {
         ...this.snapshot.hydrationByConversation,
@@ -81,15 +90,39 @@ export class ProjectionEngine {
           historyGeneration: commit.conversation.historyGeneration,
           historyBoundaryOffset: commit.historyBoundaryOffset,
           conversationRevision: commit.conversation.revision,
-          latestOffset: commit.latestOffset,
+          latestOffset,
           projectionRevision: nextProjectionRevision(
             this.snapshot.hydrationByConversation[commit.conversation.id]?.projectionRevision,
           ),
-          complete: true as const,
+          complete: !commit.window?.hasOlder,
+          ...(commit.window ? { window: Object.freeze({ ...commit.window }) } : {}),
         }),
       },
     });
     return true;
+  }
+
+  mergeEarlierHistory(conversationId: string, page: RecentMessagePage, expectedCursor: string): void {
+    const proof = this.snapshot.hydrationByConversation[conversationId];
+    const conversation = this.snapshot.conversations[conversationId];
+    if (!proof?.window || proof.window.nextOlderCursor !== expectedCursor ||
+        proof.historyGeneration !== page.historyGeneration || conversation?.historyGeneration !== page.historyGeneration ||
+        proof.historyBoundaryOffset !== page.historyBoundaryOffset ||
+        proof.window.snapshotUpperOffset !== page.snapshotUpperOffset) throw new Error("history page became stale");
+    const messages = { ...this.snapshot.messages };
+    for (const row of page.messages) {
+      if (row.conversationId !== conversationId || row.historyGeneration !== proof.historyGeneration) throw new Error("history page scope mismatch");
+      const current = messages[row.id];
+      if (!current || compareDecimal(current.revision, row.revision) < 0) messages[row.id] = freeze(row);
+    }
+    this.snapshot = freezeSnapshot({ ...this.snapshot, messages,
+      hydrationByConversation: { ...this.snapshot.hydrationByConversation, [conversationId]: Object.freeze({
+        ...proof, complete: !page.hasOlder,
+        projectionRevision: nextProjectionRevision(proof.projectionRevision),
+        window: Object.freeze({ snapshotUpperOffset: page.snapshotUpperOffset, hasOlder: page.hasOlder,
+          ...(page.nextOlderCursor ? { nextOlderCursor: page.nextOlderCursor } : {}) }),
+      }) },
+    });
   }
 
   /** Atomically replaces the authoritative private inbox conversation directory. */
@@ -231,6 +264,7 @@ export class ProjectionEngine {
     const current = this.snapshot.conversations[value.id];
     const incoming = {
       ...conversationFromRealtime(value, revision),
+      ...(current?.historyCapabilities ? { historyCapabilities: current.historyCapabilities } : {}),
       ...(value.modelOverrideId === undefined && current?.modelOverrideId !== undefined ? { modelOverrideId: current.modelOverrideId } : {}),
       ...(value.reasoning === undefined && current?.reasoning !== undefined ? { reasoning: current.reasoning } : {}),
     };
@@ -436,6 +470,7 @@ function isIdenticalHydration(
     || proof.historyBoundaryOffset !== commit.historyBoundaryOffset
     || proof.conversationRevision !== commit.conversation.revision
     || proof.latestOffset !== commit.latestOffset
+    || JSON.stringify(proof.window) !== JSON.stringify(commit.window)
   ) return false;
   const existing = Object.values(snapshot.messages)
     .filter((message) => message.conversationId === commit.conversation.id)

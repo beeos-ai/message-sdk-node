@@ -198,3 +198,23 @@ resets. A conversation-scoped `session/set_reasoning` command must bind its
 This candidate is prepared locally, not published. Publish the exact built
 artifact before downstream frozen-lock installation; do not replace a released
 version's bytes.
+
+
+## Bounded Gateway history (development)
+
+Servers advertise `history_capabilities: ["summary-v1", "tail-v1"]` on conversation
+reads. `hasMessages` is optional and distinguishes unknown from false; it does
+not declare business draft state. Watch recovery uses one recent page only when
+`tail-v1` is present. Older servers retain full-history recovery.
+
+`client.messages.recent(conversationId, limit?)` explicitly reads a recent page;
+`client.messages.earlier(conversationId)` merges the next older page into the same
+SDK projection. `getSnapshot().hydrationByConversation[id]` has `complete: false`
+and a `window` while earlier history remains. Consumers must not claim whole
+history authority for that proof. Clear invalidates the old cursor and generation.
+Active replies outside the window are restored through authorized message detail.
+A record over the tail byte budget falls back to the existing lossless full read
+for automatic recovery; the explicit recent API still reports the size error.
+
+This local implementation is not a published package version. Release the SDK
+and update consumer lockfiles before enabling it in a production build.
