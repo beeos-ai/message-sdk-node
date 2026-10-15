@@ -8,6 +8,8 @@ import type {
 export type CommandOutcome = "accepted" | "created" | "duplicate" | "outcome_unknown";
 
 export interface ConversationProjection {
+  readonly hasMessages?: boolean;
+  readonly historyCapabilities?: readonly string[];
   readonly id: string;
   readonly agentId?: string;
   readonly title?: string;
@@ -97,7 +99,8 @@ export interface ConversationHydrationProof {
    * updates and conversation-only mutations.
    */
   readonly projectionRevision: string;
-  readonly complete: true;
+  readonly complete: boolean;
+  readonly window?: HistoryWindow;
 }
 
 export interface DomainProjectionSnapshot {
@@ -112,6 +115,16 @@ export interface ConversationListPage {
   readonly conversations: readonly ConversationProjection[];
   readonly nextCursor?: string;
   readonly hasMore: boolean;
+}
+
+export interface HistoryWindow {
+  readonly snapshotUpperOffset: string;
+  readonly nextOlderCursor?: string;
+  readonly hasOlder: boolean;
+}
+
+export interface RecentMessagePage extends Omit<MessageListPage, "hasMore" | "nextSince">, HistoryWindow {
+  readonly activeMessageIds?: readonly string[];
 }
 
 export interface MessageListPage {
@@ -234,6 +247,7 @@ export interface ConversationCommandPort {
 }
 
 export interface MessageQueryPort {
+  listRecentMessages?(conversationId: string, cursor?: string, limit?: number): Promise<RecentMessagePage>;
   listMessages(conversationId: string, since?: string): Promise<MessageListPage>;
   reconcileMessage(conversationId: string, idempotencyKey: string): Promise<MessageProjection | undefined>;
   getMessage?(conversationId: string, messageId: string): Promise<MessageProjection>;

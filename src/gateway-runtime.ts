@@ -1,3 +1,4 @@
+import { HistoryWindowTooLargeError } from "./errors.js";
 import { CentrifugoSessionAdapter } from "./adapters/centrifugo.js";
 import { createCentrifugeFactory } from "./adapters/centrifuge-factory.js";
 import { OutcomeUnknownError } from "./errors.js";
@@ -12,6 +13,7 @@ import type {
   LifecyclePort,
   MessageClientComposition,
   MessageListPage,
+  RecentMessagePage,
   MessageProjection,
   OperationProjection,
   RealtimeConnectInput,
@@ -316,6 +318,48 @@ class GatewayHttpAdapter {
       nextSince: optionalString(raw.nextSince ?? raw.next_since),
       hasMore: Boolean(raw.hasMore ?? raw.has_more),
     };
+  }
+
+  async listRecentMessages(conversationId: string, cursor?: string, limit = 30): Promise<RecentMessagePage> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("history limit must be 1..50");
+    const agentId = this.agentFor(conversationId);
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (cursor !== undefined) query.set("cursor", cursor);
+    let response: unknown;
+    try {
+      response = await this.call("GET", `/api/v1/agents/${segment(agentId)}/conversations/${segment(conversationId)}/messages/tail?${query}`);
+    } catch (error) {
+      if (error instanceof GatewayHttpError && error.status === 413) throw new HistoryWindowTooLargeError();
+      throw error;
+    }
+    const raw = record(unwrap(response));
+    const generation = decimal(raw.history_generation);
+    const hasOlder = raw.has_older;
+    const nextOlderCursor = optionalString(raw.next_older_cursor);
+    if (typeof hasOlder !== "boolean" || hasOlder && !nextOlderCursor || cursor && nextOlderCursor === cursor) {
+      throw new Error("invalid history continuation");
+    }
+    const messages = array(raw.messages).map(value => message(value, conversationId, generation));
+    const upper = decimal(raw.snapshot_upper_offset);
+    const boundary = decimal(raw.history_boundary_offset);
+    const latest = decimal(raw.latest_offset_str ?? raw.latest_offset);
+    if (BigInt(upper) < BigInt(boundary) || BigInt(latest) < BigInt(upper) || messages.length > limit || hasOlder && messages.length === 0) throw new Error("invalid history coverage");
+    let previous = BigInt(boundary);
+    for (const row of messages) {
+      if (row.conversationId !== conversationId || row.historyGeneration !== generation ||
+          BigInt(row.offset) <= previous || BigInt(row.offset) > BigInt(upper)) throw new Error("invalid history window");
+      previous = BigInt(row.offset);
+    }
+    return { messages, activeMessageIds: Array.isArray(raw.active_message_ids) ? raw.active_message_ids.filter((v): v is string => typeof v === "string") : [], historyGeneration: generation, historyBoundaryOffset: boundary,
+      latestOffset: latest, snapshotUpperOffset: upper, hasOlder,
+      ...(nextOlderCursor ? { nextOlderCursor } : {}) };
+  }
+
+  async getMessage(conversationId: string, messageId: string): Promise<MessageProjection> {
+    const agentId = this.agentFor(conversationId);
+    const raw = unwrap(await this.call("GET",
+      `/api/v1/agents/${segment(agentId)}/conversations/${segment(conversationId)}/messages/${segment(messageId)}`));
+    return message(raw, conversationId, "0");
   }
 
   async reconcileMessage(
@@ -753,6 +797,8 @@ function conversation(value: unknown, expectedAgentId?: string): ConversationPro
   return {
     id: requiredString(raw.conversationId ?? raw.conversation_id ?? raw.id),
     ...(agentId ? { agentId } : {}),
+    ...(typeof raw.has_messages === "boolean" ? { hasMessages: raw.has_messages } : {}),
+    ...(Array.isArray(raw.history_capabilities) ? { historyCapabilities: raw.history_capabilities.filter((v): v is string => typeof v === "string") } : {}),
     title: optionalString(raw.title),
     ...(modelOverrideId === undefined ? {} : { modelOverrideId }),
     ...(raw.reasoning === undefined ? {} : { reasoning: parseConversationReasoning(raw.reasoning) }),

@@ -24,6 +24,7 @@ import type {
   MessageClientComposition,
   MessageClientSnapshot,
   MessageListPage,
+  RecentMessagePage,
   MessageProjection,
   OperationProjection,
   RealtimeConnectionState,
@@ -53,6 +54,8 @@ export interface ConversationsNamespace {
 }
 
 export interface MessagesNamespace {
+  recent(conversationId: string, limit?: number): Promise<RecentMessagePage>;
+  earlier(conversationId: string): Promise<RecentMessagePage | undefined>;
   send(command: SendMessageCommand): Promise<SendMessageReceipt>;
   /**
    * Explicit retry only: reconcile first and then reuse the exact caller-owned
@@ -167,6 +170,13 @@ export class UnifiedMessageClient implements MessageClient {
       delete: (id, key) => composition.conversationCommand.deleteConversation(id, key),
     };
     this.messages = {
+      recent: async (id, limit) => {
+        const list = composition.messageQuery.listRecentMessages;
+        const conversation = await composition.conversationQuery.getConversation(id);
+        if (!list || !conversation.historyCapabilities?.includes("tail-v1")) throw new Error("recent history unsupported");
+        return list.call(composition.messageQuery, id, undefined, limit);
+      },
+      earlier: async id => { const page = await this.recovery.loadEarlier(id); this.publishProjectionChange(); return page; },
       send: (command) => this.send(command, false),
       retry: (command) => this.send(command, true),
       list: (id, since) => composition.messageQuery.listMessages(id, since),

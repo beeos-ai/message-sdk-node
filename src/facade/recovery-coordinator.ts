@@ -1,9 +1,11 @@
+import { HistoryWindowTooLargeError } from "../errors.js";
 import { SingleflightHydrator } from "../protocol/index.js";
 import type {
   ConversationProjection,
   ConversationQueryPort,
   MessageListPage,
   MessageProjection,
+  RecentMessagePage,
   MessageQueryPort,
   PrivateConversationDirectoryQueryPort,
 } from "./contracts.js";
@@ -19,7 +21,7 @@ export class HistoryGenerationChangedError extends Error {
 export interface RecoveryCoordinatorOptions {
   readonly conversations: Pick<ConversationQueryPort, "getConversation">;
   readonly privateDirectory?: PrivateConversationDirectoryQueryPort;
-  readonly messages: Pick<MessageQueryPort, "listMessages">;
+  readonly messages: Pick<MessageQueryPort, "listMessages" | "listRecentMessages" | "getMessage">;
   readonly projection: ProjectionEngine;
   /** Total complete G1/messages/G2 attempts. Default and maximum: 2. */
   readonly maxAttempts?: number;
@@ -45,6 +47,28 @@ export class RecoveryCoordinator {
   recoverConversation(conversationId: string): Promise<ConversationHydrationCommit> {
     if (!conversationId) return Promise.reject(new Error("conversationId is required"));
     return this.singleflight.hydrate(`conversation:${conversationId}`, () => this.run(conversationId));
+  }
+
+  async loadEarlier(conversationId: string): Promise<RecentMessagePage | undefined> {
+    const proof = this.options.projection.getSnapshot().hydrationByConversation[conversationId];
+    const cursor = proof?.window?.nextOlderCursor;
+    if (!cursor || !proof.window?.hasOlder) return undefined;
+    if (!this.options.messages.listRecentMessages) throw new Error("recent history unsupported");
+    return this.singleflight.hydrate(`older:${conversationId}:${cursor}`, async () => {
+      try {
+        const page = await this.options.messages.listRecentMessages!(conversationId, cursor);
+        this.options.projection.mergeEarlierHistory(conversationId, page, cursor);
+        return page;
+      } catch (error) {
+        if (!(error instanceof HistoryWindowTooLargeError)) throw error;
+        const commit = await this.readConversation(conversationId, true);
+        if (this.options.projection.getSnapshot().conversations[conversationId]?.historyGeneration !== proof.historyGeneration) throw new HistoryGenerationChangedError(conversationId);
+        this.options.projection.commitHydration(commit);
+        return { messages: commit.messages, historyGeneration: commit.conversation.historyGeneration,
+          historyBoundaryOffset: commit.historyBoundaryOffset, latestOffset: commit.latestOffset,
+          snapshotUpperOffset: commit.latestOffset, hasOlder: false };
+      }
+    });
   }
 
   discoverPrivateDirectory(): Promise<readonly ConversationProjection[]> {
@@ -74,10 +98,17 @@ export class RecoveryCoordinator {
     return commit;
   }
 
-  private async readConversation(conversationId: string): Promise<ConversationHydrationCommit> {
+  private async readConversation(conversationId: string, full = false): Promise<ConversationHydrationCommit> {
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
       const g1 = await this.options.conversations.getConversation(conversationId);
-      const page = await this.readAllMessages(conversationId);
+      const recent = !full && g1.historyCapabilities?.includes("tail-v1") && this.options.messages.listRecentMessages;
+      let page: RecentMessagePage | Awaited<ReturnType<RecoveryCoordinator["readAllMessages"]>>;
+      try {
+        page = recent ? await this.options.messages.listRecentMessages!(conversationId) : await this.readAllMessages(conversationId);
+      } catch (error) {
+        if (!(error instanceof HistoryWindowTooLargeError)) throw error;
+        page = await this.readAllMessages(conversationId);
+      }
       const g2 = await this.options.conversations.getConversation(conversationId);
       if (g1.historyGeneration !== g2.historyGeneration) {
         if (attempt === this.maxAttempts) throw new HistoryGenerationChangedError(conversationId);
@@ -88,7 +119,20 @@ export class RecoveryCoordinator {
         continue;
       }
       const messages = page.messages.filter((message) => message.historyGeneration === g2.historyGeneration);
+      if ('activeMessageIds' in page && page.activeMessageIds) {
+        for (const id of page.activeMessageIds) {
+          if (messages.some(row => row.id === id)) continue;
+          if (!this.options.messages.getMessage) throw new Error("active history detail unsupported");
+          const active = await this.options.messages.getMessage(conversationId,id);
+          if (active.conversationId !== conversationId || active.historyGeneration !== page.historyGeneration) throw new HistoryGenerationChangedError(conversationId);
+          messages.push(active);
+        }
+      }
       const commit: ConversationHydrationCommit = {
+        ...('hasOlder' in page ? { window: {
+          snapshotUpperOffset: page.snapshotUpperOffset, hasOlder: page.hasOlder,
+          ...(page.nextOlderCursor ? { nextOlderCursor: page.nextOlderCursor } : {}),
+        } } : {}),
         conversation: g2,
         messages,
         historyBoundaryOffset: page.historyBoundaryOffset,

@@ -115,3 +115,8 @@ export function mapHttpError(status: number, body: unknown): MessagingError {
 
   return new MessagingError(msg, status, code);
 }
+
+/** A bounded page cannot carry a complete envelope; legacy recovery remains lossless. */
+export class HistoryWindowTooLargeError extends Error {
+  constructor() { super("History envelope exceeds the bounded page budget"); this.name = "HistoryWindowTooLargeError"; }
+}
